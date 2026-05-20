@@ -1,0 +1,13 @@
+{
+  "name": "newapi-checkin-js",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "checkin": "node src/checkin.js",
+    "check": "node src/checkin.js --dry-run"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
