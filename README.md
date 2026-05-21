@@ -102,11 +102,12 @@ npm run checkin
 Set one of these environment variables to push the execution result to Bark:
 
 ```bash
-BARK_KEY='your_bark_key' npm run checkin
+BARK='your_bark_key' npm run checkin
 ```
 
 Common variants are also supported:
 
+- `BARK`: Bark device key or a full Bark endpoint URL.
 - `BARK_KEY`: Bark device key, sent through `https://api.day.app`.
 - `BARK_PUSH`: device key or a full Bark endpoint URL.
 - `BARK_URL`: full Bark endpoint URL.

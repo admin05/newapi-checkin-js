@@ -478,7 +478,7 @@ async function runAccount(account) {
 }
 
 function resolveBarkConfig() {
-  const raw = env.BARK_URL || env.BARK_PUSH || env.BARK_KEY || '';
+  const raw = env.BARK || env.BARK_URL || env.BARK_PUSH || env.BARK_KEY || '';
   if (!raw) return null;
 
   const server = (env.BARK_SERVER || 'https://api.day.app').replace(/\/+$/, '');
