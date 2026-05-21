@@ -70,6 +70,36 @@ function parseCurlAccounts(source) {
   return accounts;
 }
 
+function normalizeAccount(account, fallbackName = '') {
+  if (typeof account === 'string') {
+    return {
+      name: fallbackName || 'account',
+      curl: account,
+    };
+  }
+
+  if (!account || typeof account !== 'object') {
+    return account;
+  }
+
+  if (!account.curl) {
+    return account;
+  }
+
+  const parsed = parseCurlAccounts(account.curl);
+  if (parsed.length === 0) {
+    return account;
+  }
+
+  const derived = parsed[0];
+  return {
+    ...derived,
+    ...account,
+    name: account.name || derived.name,
+    url: account.url || derived.url,
+  };
+}
+
 function loadAccounts() {
   if (env.NEWAPI_ACCOUNTS_CURL) {
     const parsed = parseCurlAccounts(env.NEWAPI_ACCOUNTS_CURL);
@@ -77,12 +107,18 @@ function loadAccounts() {
   }
 
   if (env.NEWAPI_ACCOUNTS_JSON) {
-    return JSON.parse(env.NEWAPI_ACCOUNTS_JSON);
+    const parsed = JSON.parse(env.NEWAPI_ACCOUNTS_JSON);
+    return Array.isArray(parsed)
+      ? parsed.map((account, index) => normalizeAccount(account, `account-${index + 1}`))
+      : parsed;
   }
 
   const configPath = env.NEWAPI_ACCOUNTS_FILE || 'accounts.json';
   if (existsSync(configPath)) {
-    return JSON.parse(readFileSync(configPath, 'utf8'));
+    const parsed = JSON.parse(readFileSync(configPath, 'utf8'));
+    return Array.isArray(parsed)
+      ? parsed.map((account, index) => normalizeAccount(account, `account-${index + 1}`))
+      : parsed;
   }
 
   return DEFAULT_ACCOUNTS.map((account) => ({

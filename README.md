@@ -46,6 +46,8 @@ You can also paste one or more `curl` requests directly into `NEWAPI_ACCOUNTS_CU
 and let the script extract `session`, `new-api-user`, `referer`, `origin`, and
 `user-agent` automatically.
 
+Or put a `curl` string in `accounts.json` under `curl` for each account.
+
 You can also use environment variables:
 
 ```bash
