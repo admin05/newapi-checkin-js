@@ -70,8 +70,47 @@ function parseCurlAccounts(source) {
   return accounts;
 }
 
+function cookieObjectToString(cookies) {
+  if (!cookies || typeof cookies !== 'object' || Array.isArray(cookies)) return '';
+
+  return Object.entries(cookies)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .map(([key, value]) => `${key}=${value}`)
+    .join('; ');
+}
+
+function parseHashAccounts(source) {
+  const accounts = [];
+
+  for (const part of source.split(',')) {
+    const item = part.trim();
+    if (!item || !item.includes('#')) continue;
+
+    const [rawUrl, ...sessionParts] = item.split('#');
+    const url = rawUrl.trim();
+    const session = sessionParts.join('#').trim();
+    if (!url || !session) continue;
+
+    accounts.push({
+      name: new URL(normalizeBaseUrl(url)).hostname,
+      url: normalizeBaseUrl(url),
+      session,
+    });
+  }
+
+  return accounts;
+}
+
 function normalizeAccount(account, fallbackName = '') {
   if (typeof account === 'string') {
+    const parsedHash = parseHashAccounts(account);
+    if (parsedHash.length > 0) {
+      return {
+        ...parsedHash[0],
+        name: fallbackName || parsedHash[0].name,
+      };
+    }
+
     return {
       name: fallbackName || 'account',
       curl: account,
@@ -81,6 +120,39 @@ function normalizeAccount(account, fallbackName = '') {
   if (!account || typeof account !== 'object') {
     return account;
   }
+
+  const normalized = {
+    ...account,
+  };
+
+  if (!normalized.session && normalized.cookies) {
+    normalized.session =
+      typeof normalized.cookies === 'string' ? normalized.cookies : cookieObjectToString(normalized.cookies);
+  }
+
+  normalized.accessToken =
+    normalized.accessToken ||
+    normalized.access_token ||
+    normalized.systemAccessToken ||
+    normalized.system_access_token ||
+    '';
+
+  normalized.userId =
+    normalized.userId ||
+    normalized.user_id ||
+    normalized.apiUser ||
+    normalized.api_user ||
+    '';
+
+  normalized.cfClearance = normalized.cfClearance || normalized.cf_clearance || '';
+
+  if (normalized.cfClearance) {
+    normalized.session = normalized.session
+      ? `${normalized.session}; cf_clearance=${normalized.cfClearance}`
+      : `cf_clearance=${normalized.cfClearance}`;
+  }
+
+  account = normalized;
 
   if (!account.curl) {
     return account;
@@ -113,6 +185,18 @@ function loadAccounts() {
       : parsed;
   }
 
+  if (env.NEWAPI_ACCOUNTS) {
+    try {
+      const parsed = JSON.parse(env.NEWAPI_ACCOUNTS);
+      return Array.isArray(parsed)
+        ? parsed.map((account, index) => normalizeAccount(account, `account-${index + 1}`))
+        : parsed;
+    } catch {
+      const parsed = parseHashAccounts(env.NEWAPI_ACCOUNTS);
+      if (parsed.length > 0) return parsed;
+    }
+  }
+
   const configPath = env.NEWAPI_ACCOUNTS_FILE || 'accounts.json';
   if (existsSync(configPath)) {
     const parsed = JSON.parse(readFileSync(configPath, 'utf8'));
@@ -124,8 +208,8 @@ function loadAccounts() {
   return DEFAULT_ACCOUNTS.map((account) => ({
     ...account,
     session: env.NEWAPI_SESSION || '',
-    accessToken: env.NEWAPI_ACCESS_TOKEN || '',
-    userId: env.NEWAPI_USER_ID || '',
+    accessToken: env.NEWAPI_ACCESS_TOKEN || env.NEWAPI_SYSTEM_ACCESS_TOKEN || '',
+    userId: env.NEWAPI_USER_ID || env.NEWAPI_API_USER || '',
     referer: env.NEWAPI_REFERER || '',
     origin: env.NEWAPI_ORIGIN || '',
   }));

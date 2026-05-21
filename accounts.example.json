@@ -4,6 +4,8 @@
     "url": "https://link-ai.cc",
     "session": "session=paste_session_cookie_here",
     "userId": "",
+    "api_user": "",
+    "system_access_token": "",
     "referer": "https://link-ai.cc/console/token",
     "origin": "https://link-ai.cc",
     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"

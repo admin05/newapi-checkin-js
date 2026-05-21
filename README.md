@@ -33,6 +33,27 @@ part is the `session` cookie from DevTools.
 If the site requires the `new-api-user` header, fill `userId` with the value
 from browser requests.
 
+The script also accepts field names used by similar NewAPI check-in projects:
+
+```json
+[
+  {
+    "name": "Link-AI",
+    "url": "https://link-ai.cc",
+    "cookies": {
+      "session": "your_cookie_value"
+    },
+    "api_user": "12345",
+    "system_access_token": "sk-xxxxxxxxxxxxxxxx"
+  }
+]
+```
+
+- `cookies.session` is converted to the `Cookie` header.
+- `api_user`, `apiUser`, and `user_id` are aliases of `userId`.
+- `system_access_token`, `systemAccessToken`, and `access_token` are aliases of `accessToken` and are sent as `Authorization: Bearer ...`.
+- `cf_clearance` is appended to the cookie string when present.
+
 If the site also checks `Referer` or `Origin`, add those too:
 
 ```json
@@ -52,6 +73,14 @@ You can also use environment variables:
 
 ```bash
 NEWAPI_ACCOUNTS_JSON='[{"name":"Link-AI","url":"https://link-ai.cc","session":"session=xxx"}]' npm run checkin
+```
+
+For compatibility with other NewAPI check-in tools, `NEWAPI_ACCOUNTS` is also
+supported. It accepts either the same JSON array or the compact
+`URL#SESSION,URL#SESSION` format:
+
+```bash
+NEWAPI_ACCOUNTS='https://link-ai.cc#your_session_value,https://xiaomuai.cn#your_session_value' npm run checkin
 ```
 
 ## Run
