@@ -12,6 +12,7 @@ const DEFAULT_ACCOUNTS = [
 const dryRun = argv.includes('--dry-run');
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = dirname(scriptDir);
+const alreadyCheckedInPattern = /今日已签到|已经签到|已签到|重复签到|already\s+(checked|signed)/i;
 
 function normalizeBaseUrl(url) {
   return new URL(url).origin;
@@ -410,6 +411,10 @@ async function checkIn(account) {
     }
 
     const message = body?.message || body?.error || '';
+    if (response.ok && alreadyCheckedInPattern.test(message)) {
+      return { method, body, alreadyCheckedIn: true };
+    }
+
     if (response.status !== 404 && !/method not allowed/i.test(message)) {
       return { method, body, error: `HTTP ${response.status} ${message}`.trim() };
     }
@@ -464,12 +469,70 @@ async function runAccount(account) {
   return {
     name,
     ok: true,
-    message: result.body?.message || 'checkin succeeded',
+    message: result.body?.message || (result.alreadyCheckedIn ? 'already checked in today' : 'checkin succeeded'),
     method: result.method,
     user: user.username || user.display_name || user.email || user.id || '',
     systemName: status.system_name || '',
     data: result.body?.data,
   };
+}
+
+function resolveBarkConfig() {
+  const raw = env.BARK_URL || env.BARK_PUSH || env.BARK_KEY || '';
+  if (!raw) return null;
+
+  const server = (env.BARK_SERVER || 'https://api.day.app').replace(/\/+$/, '');
+  const endpoint = /^https?:\/\//i.test(raw) ? raw.replace(/\/+$/, '') : `${server}/${raw.replace(/^\/+/, '')}`;
+  const params = new URLSearchParams();
+
+  if (env.BARK_GROUP) params.set('group', env.BARK_GROUP);
+  if (env.BARK_SOUND) params.set('sound', env.BARK_SOUND);
+  if (env.BARK_ICON) params.set('icon', env.BARK_ICON);
+  if (env.BARK_LEVEL) params.set('level', env.BARK_LEVEL);
+
+  return {
+    endpoint,
+    params,
+  };
+}
+
+function formatNotificationLine(result) {
+  const mark = result.ok ? 'OK' : 'FAIL';
+  const skip = result.skipped ? ' SKIP' : '';
+  const parts = [`[${mark}${skip}] ${result.name}: ${result.message}`];
+
+  if (result.user) parts.push(`user: ${result.user}`);
+  if (result.systemName) parts.push(`system: ${result.systemName}`);
+  if (result.data !== undefined) parts.push(`data: ${JSON.stringify(result.data)}`);
+
+  return parts.join('\n');
+}
+
+async function sendBarkNotification(results, failed) {
+  const config = resolveBarkConfig();
+  if (!config) return;
+
+  const title = failed > 0 ? `NewAPI Check-in failed ${failed}/${results.length}` : 'NewAPI Check-in succeeded';
+  const body = results.map(formatNotificationLine).join('\n\n');
+  const url = `${config.endpoint}${config.params.size > 0 ? `?${config.params.toString()}` : ''}`;
+
+  try {
+    const { response, body: responseBody } = await fetchJson(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+      },
+      body: JSON.stringify({
+        title,
+        body,
+      }),
+    });
+    if (!response.ok || responseBody?.code === 400 || responseBody?.code === 500) {
+      console.log(`[WARN] Bark notification failed: HTTP ${response.status} ${responseBody?.message || ''}`.trim());
+    }
+  } catch (error) {
+    console.log(`[WARN] Bark notification failed: ${error.message}`);
+  }
 }
 
 async function main() {
@@ -480,9 +543,11 @@ async function main() {
   }
 
   let failed = 0;
+  const results = [];
   for (const account of accounts) {
     try {
       const result = await runAccount(account);
+      results.push(result);
       const mark = result.ok ? 'OK' : 'FAIL';
       const skip = result.skipped ? ' SKIP' : '';
       console.log(`[${mark}${skip}] ${result.name}: ${result.message}`);
@@ -492,9 +557,17 @@ async function main() {
       if (!result.ok) failed += 1;
     } catch (error) {
       failed += 1;
-      console.log(`[FAIL] ${account.name || account.url}: ${error.message}`);
+      const result = {
+        name: account.name || account.url,
+        ok: false,
+        message: error.message,
+      };
+      results.push(result);
+      console.log(`[FAIL] ${result.name}: ${result.message}`);
     }
   }
+
+  await sendBarkNotification(results, failed);
 
   if (failed > 0) {
     exit(1);
