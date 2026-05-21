@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { env, argv, exit } from 'node:process';
 import { spawn } from 'node:child_process';
+import { dirname, isAbsolute, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const DEFAULT_ACCOUNTS = [
   { name: 'Link-AI', url: 'https://link-ai.cc' },
@@ -8,6 +10,8 @@ const DEFAULT_ACCOUNTS = [
 ];
 
 const dryRun = argv.includes('--dry-run');
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const repoRoot = dirname(scriptDir);
 
 function normalizeBaseUrl(url) {
   return new URL(url).origin;
@@ -172,6 +176,23 @@ function normalizeAccount(account, fallbackName = '') {
   };
 }
 
+function loadAccountsFile(configPath) {
+  const paths = isAbsolute(configPath)
+    ? [configPath]
+    : [configPath, join(repoRoot, configPath)];
+
+  for (const path of paths) {
+    if (!existsSync(path)) continue;
+
+    const parsed = JSON.parse(readFileSync(path, 'utf8'));
+    return Array.isArray(parsed)
+      ? parsed.map((account, index) => normalizeAccount(account, `account-${index + 1}`))
+      : parsed;
+  }
+
+  return null;
+}
+
 function loadAccounts() {
   if (env.NEWAPI_ACCOUNTS_CURL) {
     const parsed = parseCurlAccounts(env.NEWAPI_ACCOUNTS_CURL);
@@ -198,12 +219,8 @@ function loadAccounts() {
   }
 
   const configPath = env.NEWAPI_ACCOUNTS_FILE || 'accounts.json';
-  if (existsSync(configPath)) {
-    const parsed = JSON.parse(readFileSync(configPath, 'utf8'));
-    return Array.isArray(parsed)
-      ? parsed.map((account, index) => normalizeAccount(account, `account-${index + 1}`))
-      : parsed;
-  }
+  const fileAccounts = loadAccountsFile(configPath);
+  if (fileAccounts) return fileAccounts;
 
   return DEFAULT_ACCOUNTS.map((account) => ({
     ...account,
