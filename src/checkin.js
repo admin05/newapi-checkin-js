@@ -28,6 +28,8 @@ function loadAccounts() {
     session: env.NEWAPI_SESSION || '',
     accessToken: env.NEWAPI_ACCESS_TOKEN || '',
     userId: env.NEWAPI_USER_ID || '',
+    referer: env.NEWAPI_REFERER || '',
+    origin: env.NEWAPI_ORIGIN || '',
   }));
 }
 
@@ -50,6 +52,14 @@ function buildHeaders(account) {
 
   if (account.userId) {
     headers['new-api-user'] = String(account.userId);
+  }
+
+  if (account.referer) {
+    headers.referer = account.referer;
+  }
+
+  if (account.origin) {
+    headers.origin = account.origin;
   }
 
   return headers;

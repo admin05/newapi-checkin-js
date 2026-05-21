@@ -3,12 +3,16 @@
     "name": "Link-AI",
     "url": "https://link-ai.cc",
     "session": "paste_session_cookie_here",
-    "userId": ""
+    "userId": "",
+    "referer": "https://link-ai.cc/console/token",
+    "origin": "https://link-ai.cc"
   },
   {
     "name": "Xiaomu API",
     "url": "https://xiaomuai.cn",
     "session": "paste_session_cookie_here",
-    "userId": ""
+    "userId": "",
+    "referer": "",
+    "origin": ""
   }
 ]

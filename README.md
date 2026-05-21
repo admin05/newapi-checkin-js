@@ -33,6 +33,15 @@ part is the `session` cookie from DevTools.
 If the site requires the `new-api-user` header, fill `userId` with the value
 from browser requests.
 
+If the site also checks `Referer` or `Origin`, add those too:
+
+```json
+{
+  "referer": "https://link-ai.cc/console/token",
+  "origin": "https://link-ai.cc"
+}
+```
+
 You can also use environment variables:
 
 ```bash
