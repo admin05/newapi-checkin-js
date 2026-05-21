@@ -502,7 +502,6 @@ function formatNotificationLine(result) {
   const parts = [`[${mark}${skip}] ${result.name}: ${result.message}`];
 
   if (result.user) parts.push(`user: ${result.user}`);
-  if (result.systemName) parts.push(`system: ${result.systemName}`);
   if (result.data !== undefined) parts.push(`data: ${JSON.stringify(result.data)}`);
 
   return parts.join('\n');
