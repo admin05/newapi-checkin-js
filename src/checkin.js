@@ -13,7 +13,69 @@ function normalizeBaseUrl(url) {
   return new URL(url).origin;
 }
 
+function splitCurlBlocks(source) {
+  const blocks = [];
+  const regex = /(^|\n)\s*curl\s+['"][^\n]*?['"][\s\S]*?(?=(?:\n\s*curl\s+)|$)/g;
+  for (const match of source.matchAll(regex)) {
+    const block = match[0].replace(/^\n/, '').trim();
+    if (block) blocks.push(block);
+  }
+  return blocks;
+}
+
+function parseCurlHeaders(block) {
+  const headers = {};
+  const headerRegex = /-H\s+(['"])([\s\S]*?)\1/g;
+  for (const match of block.matchAll(headerRegex)) {
+    const raw = match[2];
+    const idx = raw.indexOf(':');
+    if (idx <= 0) continue;
+    const key = raw.slice(0, idx).trim().toLowerCase();
+    const value = raw.slice(idx + 1).trim();
+    if (key) headers[key] = value;
+  }
+  return headers;
+}
+
+function parseCurlAccounts(source) {
+  const accounts = [];
+
+  for (const block of splitCurlBlocks(source)) {
+    const urlMatch = block.match(/curl\s+(['"])(.*?)\1/);
+    if (!urlMatch) continue;
+
+    const url = urlMatch[2];
+    const headers = parseCurlHeaders(block);
+    const cookieMatch = block.match(/-b\s+(['"])([\s\S]*?)\1/);
+    const cookie = cookieMatch ? cookieMatch[2].trim() : '';
+    const baseUrl = normalizeBaseUrl(url);
+
+    accounts.push({
+      name: new URL(baseUrl).hostname,
+      url: baseUrl,
+      session: cookie.replace(/^cookie:\s*/i, ''),
+      accessToken: headers.authorization ? headers.authorization.replace(/^Bearer\s+/i, '') : '',
+      userId: headers['new-api-user'] || '',
+      referer: headers.referer || '',
+      origin: headers.origin || '',
+      userAgent: headers['user-agent'] || '',
+      extraHeaders: Object.fromEntries(
+        Object.entries(headers).filter(([key]) =>
+          !['authorization', 'new-api-user', 'referer', 'origin', 'user-agent'].includes(key),
+        ),
+      ),
+    });
+  }
+
+  return accounts;
+}
+
 function loadAccounts() {
+  if (env.NEWAPI_ACCOUNTS_CURL) {
+    const parsed = parseCurlAccounts(env.NEWAPI_ACCOUNTS_CURL);
+    if (parsed.length > 0) return parsed;
+  }
+
   if (env.NEWAPI_ACCOUNTS_JSON) {
     return JSON.parse(env.NEWAPI_ACCOUNTS_JSON);
   }
@@ -40,6 +102,14 @@ function buildHeaders(account) {
     'user-agent': 'Mozilla/5.0 newapi-checkin-js/0.1.0',
   };
 
+  if (account.extraHeaders && typeof account.extraHeaders === 'object') {
+    for (const [key, value] of Object.entries(account.extraHeaders)) {
+      if (value !== undefined && value !== '') {
+        headers[key] = value;
+      }
+    }
+  }
+
   if (account.session) {
     headers.cookie = account.session.includes('=')
       ? account.session
@@ -54,12 +124,12 @@ function buildHeaders(account) {
     headers['new-api-user'] = String(account.userId);
   }
 
-  if (account.referer) {
-    headers.referer = account.referer;
-  }
+  headers.referer = account.referer || `${normalizeBaseUrl(account.url)}/console/personal`;
 
-  if (account.origin) {
-    headers.origin = account.origin;
+  headers.origin = account.origin || normalizeBaseUrl(account.url);
+
+  if (account.userAgent) {
+    headers['user-agent'] = account.userAgent;
   }
 
   return headers;

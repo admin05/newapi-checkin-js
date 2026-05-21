@@ -2,17 +2,19 @@
   {
     "name": "Link-AI",
     "url": "https://link-ai.cc",
-    "session": "paste_session_cookie_here",
+    "session": "session=paste_session_cookie_here",
     "userId": "",
     "referer": "https://link-ai.cc/console/token",
-    "origin": "https://link-ai.cc"
+    "origin": "https://link-ai.cc",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
   },
   {
     "name": "Xiaomu API",
     "url": "https://xiaomuai.cn",
-    "session": "paste_session_cookie_here",
+    "session": "session=paste_session_cookie_here",
     "userId": "",
     "referer": "",
-    "origin": ""
+    "origin": "",
+    "userAgent": ""
   }
 ]

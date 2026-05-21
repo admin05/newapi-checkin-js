@@ -42,6 +42,10 @@ If the site also checks `Referer` or `Origin`, add those too:
 }
 ```
 
+You can also paste one or more `curl` requests directly into `NEWAPI_ACCOUNTS_CURL`
+and let the script extract `session`, `new-api-user`, `referer`, `origin`, and
+`user-agent` automatically.
+
 You can also use environment variables:
 
 ```bash
