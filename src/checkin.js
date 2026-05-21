@@ -162,15 +162,23 @@ async function getStatus(account) {
 
 async function getSelf(account) {
   const baseUrl = normalizeBaseUrl(account.url);
-  const { response, body } = await fetchJson(`${baseUrl}/api/user/self`, {
-    headers: buildHeaders(account),
-  });
+  const headers = buildHeaders(account);
+  const endpoints = ['/api/user/self/groups', '/api/user/self'];
+  const errors = [];
 
-  if (!response.ok || !body?.success) {
-    throw new Error(`login check failed: HTTP ${response.status} ${body?.message || ''}`.trim());
+  for (const endpoint of endpoints) {
+    const { response, body } = await fetchJson(`${baseUrl}${endpoint}`, {
+      headers,
+    });
+
+    if (response.ok && body?.success) {
+      return body.data;
+    }
+
+    errors.push(`HTTP ${response.status} ${body?.message || body?.error || ''}`.trim());
   }
 
-  return body.data;
+  throw new Error(`login check failed: ${errors.join(' | ')}`);
 }
 
 async function checkIn(account) {
