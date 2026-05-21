@@ -171,6 +171,11 @@ function buildHeaders(account) {
   return headers;
 }
 
+function hasLoginCredential(account) {
+  const headers = buildHeaders(account);
+  return Boolean(headers.cookie || headers.authorization);
+}
+
 async function fetchJson(url, options = {}) {
   try {
     const response = await fetch(url, {
@@ -334,6 +339,12 @@ async function runAccount(account) {
       message: 'checkin is enabled; dry run skipped login and checkin',
       systemName: status.system_name || '',
     };
+  }
+
+  if (!hasLoginCredential(account)) {
+    throw new Error(
+      'missing login credential: create accounts.json or set NEWAPI_ACCOUNTS_JSON/NEWAPI_ACCOUNTS_CURL with a browser session cookie or access token',
+    );
   }
 
   const user = await getSelf(account);
