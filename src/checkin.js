@@ -9,6 +9,7 @@ const DEFAULT_ACCOUNTS = [
   { name: 'Xiaomu API', url: 'https://xiaomuai.cn' },
   { name: 'Huan API', url: 'https://ai.huan666.de' },
   { name: 'ElySiver', url: 'https://elysiver.h-e.top' },
+  { name: 'Xcode', url: 'https://xcode.best' },
 ];
 
 const dryRun = argv.includes('--dry-run');

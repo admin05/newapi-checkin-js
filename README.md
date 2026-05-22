@@ -6,6 +6,7 @@ Node.js script for NewAPI-style daily check-in. It currently targets:
 - `https://xiaomuai.cn`
 - `https://ai.huan666.de`
 - `https://elysiver.h-e.top`
+- `https://xcode.best`
 
 The script first reads `/api/status`. It only calls `/api/user/checkin` when
 `checkin_enabled` is `true`.
