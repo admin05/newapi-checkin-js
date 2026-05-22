@@ -18,5 +18,14 @@
     "referer": "",
     "origin": "",
     "userAgent": ""
+  },
+  {
+    "name": "ElySiver",
+    "url": "https://elysiver.h-e.top",
+    "session": "session=paste_session_cookie_here",
+    "userId": "",
+    "referer": "https://elysiver.h-e.top/console/personal",
+    "origin": "https://elysiver.h-e.top",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
   }
 ]

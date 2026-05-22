@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const DEFAULT_ACCOUNTS = [
   { name: 'Link-AI', url: 'https://link-ai.cc' },
   { name: 'Xiaomu API', url: 'https://xiaomuai.cn' },
+  { name: 'ElySiver', url: 'https://elysiver.h-e.top' },
 ];
 
 const dryRun = argv.includes('--dry-run');
