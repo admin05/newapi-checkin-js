@@ -35,8 +35,9 @@ part is the `session` cookie from DevTools.
 ]
 ```
 
-If the site requires the `new-api-user` header, fill `userId` with the value
-from browser requests.
+If the site requires the `new-api-user` or `x-user-id` header, fill `userId`
+with the value from browser requests. The script sends both header names for
+compatibility.
 
 The script also accepts field names used by similar NewAPI check-in projects:
 
@@ -55,7 +56,8 @@ The script also accepts field names used by similar NewAPI check-in projects:
 ```
 
 - `cookies.session` is converted to the `Cookie` header.
-- `api_user`, `apiUser`, and `user_id` are aliases of `userId`.
+- `api_user`, `apiUser`, and `user_id` are aliases of `userId`, sent as both
+  `new-api-user` and `x-user-id`.
 - `system_access_token`, `systemAccessToken`, and `access_token` are aliases of `accessToken` and are sent as `Authorization: Bearer ...`.
 - `cf_clearance` is appended to the cookie string when present.
 
@@ -70,7 +72,7 @@ If the site also checks `Referer` or `Origin`, add those too:
 
 You can also paste one or more `curl` requests directly into `NEWAPI_ACCOUNTS_CURL`
 and let the script extract `session`, `new-api-user`, `referer`, `origin`, and
-`user-agent` automatically.
+`user-agent` automatically. `x-user-id` is also supported.
 
 Or put a `curl` string in `accounts.json` under `curl` for each account.
 

@@ -64,13 +64,13 @@ function parseCurlAccounts(source) {
       url: baseUrl,
       session: cookie.replace(/^cookie:\s*/i, ''),
       accessToken: headers.authorization ? headers.authorization.replace(/^Bearer\s+/i, '') : '',
-      userId: headers['new-api-user'] || '',
+      userId: headers['new-api-user'] || headers['x-user-id'] || '',
       referer: headers.referer || '',
       origin: headers.origin || '',
       userAgent: headers['user-agent'] || '',
       extraHeaders: Object.fromEntries(
         Object.entries(headers).filter(([key]) =>
-          !['authorization', 'new-api-user', 'referer', 'origin', 'user-agent'].includes(key),
+          !['authorization', 'new-api-user', 'x-user-id', 'referer', 'origin', 'user-agent'].includes(key),
         ),
       ),
     });
@@ -264,6 +264,7 @@ function buildHeaders(account) {
 
   if (account.userId) {
     headers['new-api-user'] = String(account.userId);
+    headers['x-user-id'] = String(account.userId);
   }
 
   headers.referer = account.referer || `${normalizeBaseUrl(account.url)}/console/personal`;
