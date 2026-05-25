@@ -5,6 +5,7 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const DEFAULT_ACCOUNTS = [
+  { name: 'AveMujica API', url: 'https://api.avemujica.moe' },
   { name: 'Link-AI', url: 'https://link-ai.cc' },
   { name: 'Xiaomu API', url: 'https://xiaomuai.cn' },
   { name: 'Huan API', url: 'https://ai.huan666.de' },
@@ -400,30 +401,34 @@ async function getSelf(account) {
 async function checkIn(account) {
   const baseUrl = normalizeBaseUrl(account.url);
   const headers = buildHeaders(account);
-  const methods = ['POST', 'GET'];
+  const attempts = [
+    { endpoint: '/api/user/checkin', method: 'POST', body: '{}' },
+    { endpoint: '/api/user/checkin', method: 'GET' },
+    { endpoint: '/api/user/checkin/reward-pack-plan', method: 'POST', body: '{}' },
+  ];
 
-  for (const method of methods) {
-    const { response, body } = await fetchJson(`${baseUrl}/api/user/checkin`, {
-      method,
+  for (const attempt of attempts) {
+    const { response, body } = await fetchJson(`${baseUrl}${attempt.endpoint}`, {
+      method: attempt.method,
       headers,
-      body: method === 'POST' ? '{}' : undefined,
+      body: attempt.body,
     });
 
     if (response.ok && body?.success) {
-      return { method, body };
+      return { method: attempt.method, endpoint: attempt.endpoint, body };
     }
 
     const message = body?.message || body?.error || '';
     if (response.ok && alreadyCheckedInPattern.test(message)) {
-      return { method, body, alreadyCheckedIn: true };
+      return { method: attempt.method, endpoint: attempt.endpoint, body, alreadyCheckedIn: true };
     }
 
     if (response.status !== 404 && !/method not allowed/i.test(message)) {
-      return { method, body, error: `HTTP ${response.status} ${message}`.trim() };
+      return { method: attempt.method, endpoint: attempt.endpoint, body, error: `HTTP ${response.status} ${message}`.trim() };
     }
   }
 
-  return { error: 'checkin endpoint did not accept POST or GET' };
+  return { error: 'checkin endpoint did not accept known checkin routes' };
 }
 
 async function runAccount(account) {

@@ -1,5 +1,14 @@
 [
   {
+    "name": "AveMujica API",
+    "url": "https://api.avemujica.moe",
+    "session": "session=paste_session_cookie_here",
+    "userId": "",
+    "referer": "https://api.avemujica.moe/profile",
+    "origin": "https://api.avemujica.moe",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+  },
+  {
     "name": "Link-AI",
     "url": "https://link-ai.cc",
     "session": "session=paste_session_cookie_here",
