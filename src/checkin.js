@@ -18,6 +18,8 @@ const dryRun = argv.includes('--dry-run');
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = dirname(scriptDir);
 const alreadyCheckedInPattern = /今日已签到|已经签到|已签到|重复签到|already\s+(checked|signed)/i;
+const captchaRequiredPattern = /请输入验证码|验证码|captcha/i;
+const retryableCheckinFailurePattern = /验证码|captcha|verify/i;
 
 function normalizeBaseUrl(url) {
   return new URL(url).origin;
@@ -155,6 +157,7 @@ function normalizeAccount(account, fallbackName = '') {
     '';
 
   normalized.cfClearance = normalized.cfClearance || normalized.cf_clearance || '';
+  normalized.captchaAnswer = normalized.captchaAnswer || normalized.captcha_answer || '';
 
   if (normalized.cfClearance) {
     normalized.session = normalized.session
@@ -408,6 +411,7 @@ async function checkIn(account) {
     { endpoint: '/api/user/checkin', method: 'GET' },
     { endpoint: '/api/user/checkin/reward-pack-plan', method: 'POST', body: '{}' },
   ];
+  const errors = [];
 
   for (const attempt of attempts) {
     const { response, body } = await fetchJson(`${baseUrl}${attempt.endpoint}`, {
@@ -425,12 +429,79 @@ async function checkIn(account) {
       return { method: attempt.method, endpoint: attempt.endpoint, body, alreadyCheckedIn: true };
     }
 
+    if (response.ok && captchaRequiredPattern.test(message)) {
+      const captchaResult = await checkInWithCaptcha(account, baseUrl, headers);
+      if (!captchaResult.error || captchaResult.captchaRequired) {
+        return captchaResult;
+      }
+    }
+
+    errors.push(`${attempt.method} ${attempt.endpoint}: HTTP ${response.status} ${message}`.trim());
+
+    if (response.ok && retryableCheckinFailurePattern.test(message)) {
+      continue;
+    }
+
     if (response.status !== 404 && !/method not allowed/i.test(message)) {
       return { method: attempt.method, endpoint: attempt.endpoint, body, error: `HTTP ${response.status} ${message}`.trim() };
     }
   }
 
-  return { error: 'checkin endpoint did not accept known checkin routes' };
+  return {
+    error: errors.length > 0
+      ? `checkin endpoint did not accept known checkin routes: ${errors.join(' | ')}`
+      : 'checkin endpoint did not accept known checkin routes',
+  };
+}
+
+function getCaptchaAnswer(account) {
+  return account.captchaAnswer || env.NEWAPI_CAPTCHA_ANSWER || '';
+}
+
+async function checkInWithCaptcha(account, baseUrl, headers) {
+  const answer = getCaptchaAnswer(account).trim();
+  if (!answer) {
+    return {
+      error: 'captcha required: set captchaAnswer in this account or NEWAPI_CAPTCHA_ANSWER with the current check-in captcha answer',
+      captchaRequired: true,
+    };
+  }
+
+  const captcha = await fetchJson(`${baseUrl}/api/user/checkin/captcha`, {
+    method: 'POST',
+    headers,
+  });
+
+  if (!captcha.response.ok || !captcha.body?.success || !captcha.body?.data?.captcha_id) {
+    return {
+      error: `captcha request failed: HTTP ${captcha.response.status} ${captcha.body?.message || captcha.body?.error || ''}`.trim(),
+    };
+  }
+
+  const { response, body } = await fetchJson(`${baseUrl}/api/user/checkin`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      captcha_id: captcha.body.data.captcha_id,
+      captcha_answer: answer,
+    }),
+  });
+
+  if (response.ok && body?.success) {
+    return { method: 'POST', endpoint: '/api/user/checkin', body };
+  }
+
+  const message = body?.message || body?.error || '';
+  if (response.ok && alreadyCheckedInPattern.test(message)) {
+    return { method: 'POST', endpoint: '/api/user/checkin', body, alreadyCheckedIn: true };
+  }
+
+  return {
+    method: 'POST',
+    endpoint: '/api/user/checkin',
+    body,
+    error: `HTTP ${response.status} ${message}`.trim(),
+  };
 }
 
 async function runAccount(account) {

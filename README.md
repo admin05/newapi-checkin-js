@@ -71,6 +71,23 @@ If the site also checks `Referer` or `Origin`, add those too:
 }
 ```
 
+Some sites, including `https://lpgpt.us`, require a check-in captcha. For those
+sites, open the check-in page in the browser, read the current captcha, and pass
+the answer for that run:
+
+```json
+{
+  "name": "LPGPT",
+  "url": "https://lpgpt.us",
+  "session": "session=your_cookie_value",
+  "captchaAnswer": "1234"
+}
+```
+
+You can also set `NEWAPI_CAPTCHA_ANSWER` for a one-off run. If no captcha answer
+is provided, the script reports that the site needs one instead of treating it as
+a normal check-in failure.
+
 You can also paste one or more `curl` requests directly into `NEWAPI_ACCOUNTS_CURL`
 and let the script extract `session`, `new-api-user`, `referer`, `origin`, and
 `user-agent` automatically. `x-user-id` is also supported.
