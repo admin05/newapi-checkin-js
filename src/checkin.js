@@ -11,6 +11,7 @@ const DEFAULT_ACCOUNTS = [
   { name: 'Huan API', url: 'https://ai.huan666.de' },
   { name: 'ElySiver', url: 'https://elysiver.h-e.top' },
   { name: 'Xcode', url: 'https://xcode.best' },
+  { name: 'LPGPT', url: 'https://lpgpt.us' },
 ];
 
 const dryRun = argv.includes('--dry-run');

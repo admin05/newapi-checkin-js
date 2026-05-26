@@ -7,6 +7,7 @@ Node.js script for NewAPI-style daily check-in. It currently targets:
 - `https://ai.huan666.de`
 - `https://elysiver.h-e.top`
 - `https://xcode.best`
+- `https://lpgpt.us`
 - `https://api.avemujica.moe`
 
 The script first reads `/api/status`. It only calls `/api/user/checkin` when
