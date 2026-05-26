@@ -538,6 +538,17 @@ async function runAccount(account) {
   const result = await checkIn(account);
 
   if (result.error) {
+    if (result.captchaRequired) {
+      return {
+        name,
+        ok: true,
+        skipped: true,
+        message: result.error,
+        user: user.username || user.display_name || user.email || user.id || '',
+        systemName: status.system_name || '',
+      };
+    }
+
     return {
       name,
       ok: false,

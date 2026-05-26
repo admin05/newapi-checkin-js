@@ -85,8 +85,8 @@ the answer for that run:
 ```
 
 You can also set `NEWAPI_CAPTCHA_ANSWER` for a one-off run. If no captcha answer
-is provided, the script reports that the site needs one instead of treating it as
-a normal check-in failure.
+is provided, the script marks that account as skipped so unattended Arcadia runs
+can still finish and notify you about the sites that did run.
 
 You can also paste one or more `curl` requests directly into `NEWAPI_ACCOUNTS_CURL`
 and let the script extract `session`, `new-api-user`, `referer`, `origin`, and
