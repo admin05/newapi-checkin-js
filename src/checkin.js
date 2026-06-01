@@ -12,6 +12,7 @@ const DEFAULT_ACCOUNTS = [
   { name: 'ElySiver', url: 'https://elysiver.h-e.top' },
   { name: 'Xcode', url: 'https://xcode.best' },
   { name: 'LPGPT', url: 'https://lpgpt.us' },
+  { name: 'Muyuan', url: 'https://muyuan.do' },
 ];
 
 const dryRun = argv.includes('--dry-run');

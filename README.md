@@ -9,6 +9,7 @@ Node.js script for NewAPI-style daily check-in. It currently targets:
 - `https://xcode.best`
 - `https://lpgpt.us`
 - `https://api.avemujica.moe`
+- `https://muyuan.do`
 
 The script first reads `/api/status`. It only calls `/api/user/checkin` when
 `checkin_enabled` is `true`. For compatible sites that use a reward pack

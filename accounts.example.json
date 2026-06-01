@@ -64,5 +64,14 @@
     "referer": "https://lpgpt.us/console/personal",
     "origin": "https://lpgpt.us",
     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+  },
+  {
+    "name": "Muyuan",
+    "url": "https://muyuan.do",
+    "session": "session=paste_session_cookie_here",
+    "userId": "",
+    "referer": "https://muyuan.do/console/personal",
+    "origin": "https://muyuan.do",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
   }
 ]
