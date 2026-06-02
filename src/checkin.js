@@ -22,6 +22,7 @@ const alreadyCheckedInPattern = /今日已签到|已经签到|已签到|重复�
 const captchaRequiredPattern = /请输入验证码|验证码|captcha/i;
 const retryableCheckinFailurePattern = /验证码|captcha|verify/i;
 const missingAuthPattern = /not\s+logged\s+in|no\s+access\s+token|unauthorized/i;
+const nonLoginCookieNames = new Set(['cf_clearance', '__cf_bm', '_cfuvid']);
 
 function normalizeBaseUrl(url) {
   return new URL(url).origin;
@@ -97,6 +98,25 @@ function cookieObjectToString(cookies) {
     .filter(([, value]) => value !== undefined && value !== null && value !== '')
     .map(([key, value]) => `${key}=${value}`)
     .join('; ');
+}
+
+function getCookieNames(cookie) {
+  return String(cookie || '')
+    .split(';')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => part.split('=')[0].trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function hasLoginCookie(cookie) {
+  const names = getCookieNames(cookie);
+  return names.some((name) => !nonLoginCookieNames.has(name));
+}
+
+function hasOnlyNonLoginCookies(cookie) {
+  const names = getCookieNames(cookie);
+  return names.length > 0 && names.every((name) => nonLoginCookieNames.has(name));
 }
 
 function parseHashAccounts(source) {
@@ -292,7 +312,7 @@ function buildHeaders(account) {
 
 function hasLoginCredential(account) {
   const headers = buildHeaders(account);
-  return Boolean(headers.cookie || headers.authorization);
+  return Boolean(headers.authorization || hasLoginCookie(headers.cookie));
 }
 
 async function fetchJson(url, options = {}) {
@@ -545,6 +565,13 @@ async function runAccount(account) {
   }
 
   if (!hasLoginCredential(account)) {
+    const headers = buildHeaders(account);
+    if (hasOnlyNonLoginCookies(headers.cookie)) {
+      throw new Error(
+        'missing login credential: cf_clearance is only a Cloudflare clearance cookie; refresh this account from a logged-in browser request and include the NewAPI login cookie or Authorization Bearer token',
+      );
+    }
+
     throw new Error(
       'missing login credential: create accounts.json or set NEWAPI_ACCOUNTS_JSON/NEWAPI_ACCOUNTS_CURL with a browser session cookie or access token',
     );

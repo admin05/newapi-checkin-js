@@ -103,6 +103,11 @@ fresh request from the logged-in browser as curl and use that curl text in
 `NEWAPI_ACCOUNTS_CURL` or the account's `curl` field so the script can extract
 the full cookie and bearer token safely.
 
+`cf_clearance` is a Cloudflare clearance cookie, not the NewAPI login session.
+It can rotate frequently and is useful only when sent together with the real
+site login cookie or bearer token. A cookie string that only contains
+`cf_clearance=...` will be treated as missing login credentials.
+
 You can also use environment variables:
 
 ```bash
