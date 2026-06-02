@@ -91,9 +91,17 @@ can still finish and notify you about the sites that did run.
 
 You can also paste one or more `curl` requests directly into `NEWAPI_ACCOUNTS_CURL`
 and let the script extract `session`, `new-api-user`, `referer`, `origin`, and
-`user-agent` automatically. `x-user-id` is also supported.
+`user-agent` automatically. `x-user-id`, `Cookie`, and `Authorization: Bearer ...`
+are also supported.
 
 Or put a `curl` string in `accounts.json` under `curl` for each account.
+
+If a site returns `HTTP 401 Unauthorized, not logged in and no access token
+provided`, the saved browser session has expired or the site did not receive all
+required login headers. For those sites, including `https://muyuan.do`, copy a
+fresh request from the logged-in browser as curl and use that curl text in
+`NEWAPI_ACCOUNTS_CURL` or the account's `curl` field so the script can extract
+the full cookie and bearer token safely.
 
 You can also use environment variables:
 

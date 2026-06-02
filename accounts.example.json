@@ -69,6 +69,7 @@
     "name": "Muyuan",
     "url": "https://muyuan.do",
     "session": "session=paste_session_cookie_here",
+    "accessToken": "",
     "userId": "",
     "referer": "https://muyuan.do/console/personal",
     "origin": "https://muyuan.do",

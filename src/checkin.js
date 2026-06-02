@@ -21,6 +21,7 @@ const repoRoot = dirname(scriptDir);
 const alreadyCheckedInPattern = /今日已签到|已经签到|已签到|重复签到|already\s+(checked|signed)/i;
 const captchaRequiredPattern = /请输入验证码|验证码|captcha/i;
 const retryableCheckinFailurePattern = /验证码|captcha|verify/i;
+const missingAuthPattern = /not\s+logged\s+in|no\s+access\s+token|unauthorized/i;
 
 function normalizeBaseUrl(url) {
   return new URL(url).origin;
@@ -50,6 +51,13 @@ function parseCurlHeaders(block) {
   return headers;
 }
 
+function parseCurlCookie(block, headers) {
+  const cookieMatch = block.match(/(?:^|\s)(?:-b|--cookie)\s+(['"])([\s\S]*?)\1/);
+  if (cookieMatch) return cookieMatch[2].trim().replace(/^cookie:\s*/i, '');
+
+  return headers.cookie || '';
+}
+
 function parseCurlAccounts(source) {
   const accounts = [];
 
@@ -59,8 +67,7 @@ function parseCurlAccounts(source) {
 
     const url = urlMatch[2];
     const headers = parseCurlHeaders(block);
-    const cookieMatch = block.match(/-b\s+(['"])([\s\S]*?)\1/);
-    const cookie = cookieMatch ? cookieMatch[2].trim() : '';
+    const cookie = parseCurlCookie(block, headers);
     const baseUrl = normalizeBaseUrl(url);
 
     accounts.push({
@@ -74,7 +81,7 @@ function parseCurlAccounts(source) {
       userAgent: headers['user-agent'] || '',
       extraHeaders: Object.fromEntries(
         Object.entries(headers).filter(([key]) =>
-          !['authorization', 'new-api-user', 'x-user-id', 'referer', 'origin', 'user-agent'].includes(key),
+          !['authorization', 'cookie', 'new-api-user', 'x-user-id', 'referer', 'origin', 'user-agent'].includes(key),
         ),
       ),
     });
@@ -401,7 +408,15 @@ async function getSelf(account) {
     errors.push(`HTTP ${response.status} ${body?.message || body?.error || ''}`.trim());
   }
 
-  throw new Error(`login check failed: ${errors.join(' | ')}`);
+  const uniqueErrors = [...new Set(errors)];
+  const detail = uniqueErrors.join(' | ');
+  if (uniqueErrors.some((error) => /^HTTP 401\b/i.test(error) && missingAuthPattern.test(error))) {
+    throw new Error(
+      `login check failed: credentials were rejected by the site (${detail}). Refresh this account from a logged-in browser request; include the full Cookie header and Authorization Bearer token if the request has one. The safest input is a browser-copied curl in NEWAPI_ACCOUNTS_CURL or this account's curl field.`,
+    );
+  }
+
+  throw new Error(`login check failed: ${detail}`);
 }
 
 async function checkIn(account) {
