@@ -647,7 +647,8 @@ async function sendBarkNotification(results, failed) {
   if (!config) return;
 
   const title = failed > 0 ? `NewAPI Check-in failed ${failed}/${results.length}` : 'NewAPI Check-in succeeded';
-  const body = results.map(formatNotificationLine).join('\n\n');
+  const targetUrl = 'https://muyuan.do/';
+  const body = `${results.map(formatNotificationLine).join('\n\n')}\n\n${targetUrl}`;
   const url = `${config.endpoint}${config.params.size > 0 ? `?${config.params.toString()}` : ''}`;
 
   try {
@@ -659,6 +660,7 @@ async function sendBarkNotification(results, failed) {
       body: JSON.stringify({
         title,
         body,
+        url: targetUrl,
       }),
     });
     if (!response.ok || responseBody?.code === 400 || responseBody?.code === 500) {
