@@ -419,6 +419,36 @@ function fetchJsonWithCurl(url, options = {}) {
   });
 }
 
+function compactBodyForError(body) {
+  if (!body) return '';
+  const text = typeof body === 'string' ? body : JSON.stringify(body);
+  return text.length > 240 ? `${text.slice(0, 237)}...` : text;
+}
+
+function unwrapNewApiStatus(response, body) {
+  if (!response.ok) {
+    throw new Error(`status failed: HTTP ${response.status} ${body?.message || body?.error || compactBodyForError(body)}`.trim());
+  }
+
+  if (body?.success === true && body.data) {
+    return body.data;
+  }
+
+  if ((body?.code === 0 || body?.code === '0') && body.data) {
+    return body.data;
+  }
+
+  if (body?.data && typeof body.data === 'object') {
+    return body.data;
+  }
+
+  if (body && typeof body === 'object' && ('checkin_enabled' in body || 'system_name' in body)) {
+    return body;
+  }
+
+  throw new Error(`status failed: HTTP ${response.status} unexpected response ${compactBodyForError(body)}`.trim());
+}
+
 async function getStatus(account) {
   if (isSub2ApiAccount(account)) {
     return getSub2ApiStatus(account);
@@ -429,11 +459,7 @@ async function getStatus(account) {
     headers: buildHeaders(account),
   });
 
-  if (!response.ok || !body?.success) {
-    throw new Error(`status failed: HTTP ${response.status} ${body?.message || ''}`.trim());
-  }
-
-  return body.data;
+  return unwrapNewApiStatus(response, body);
 }
 
 function getSub2ApiMessage(body) {
