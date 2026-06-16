@@ -426,6 +426,13 @@ function compactBodyForError(body) {
 }
 
 function unwrapNewApiStatus(response, body) {
+  const raw = typeof body?.raw === 'string' ? body.raw : '';
+  if (/^\s*<!doctype html\b|<html\b/i.test(raw)) {
+    throw new Error(
+      'status failed: API URL returned HTML instead of JSON; update this account url to the real NewAPI backend/panel URL',
+    );
+  }
+
   if (!response.ok) {
     throw new Error(`status failed: HTTP ${response.status} ${body?.message || body?.error || compactBodyForError(body)}`.trim());
   }
