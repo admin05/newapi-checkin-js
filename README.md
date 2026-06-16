@@ -10,6 +10,7 @@ Node.js script for NewAPI-style daily check-in. It currently targets:
 - `https://lpgpt.us`
 - `https://api.avemujica.moe`
 - `https://muyuan.do`
+- `https://sub.100xlabs.space` (Sub2API)
 
 The script first reads `/api/status`. It only calls `/api/user/checkin` when
 `checkin_enabled` is `true`. For compatible sites that use a reward pack
@@ -40,6 +41,22 @@ part is the `session` cookie from DevTools.
 If the site requires the `new-api-user` or `x-user-id` header, fill `userId`
 with the value from browser requests. The script sends both header names for
 compatibility.
+
+For `https://sub.100xlabs.space`, use the Bearer token stored in browser
+`localStorage.auth_token`:
+
+```json
+{
+  "name": "100XLabs",
+  "url": "https://sub.100xlabs.space",
+  "siteType": "sub2api",
+  "accessToken": "paste_auth_token_here",
+  "turnstileToken": ""
+}
+```
+
+If the check-in card requires Turnstile for your account, pass the current
+token for that run in `turnstileToken` or `SUB2API_TURNSTILE_TOKEN`.
 
 The script also accepts field names used by similar NewAPI check-in projects:
 

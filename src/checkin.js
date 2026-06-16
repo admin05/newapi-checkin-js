@@ -21,8 +21,9 @@ const repoRoot = dirname(scriptDir);
 const alreadyCheckedInPattern = /今日已签到|已经签到|已签到|重复签到|already\s+(checked|signed)/i;
 const captchaRequiredPattern = /请输入验证码|验证码|captcha/i;
 const retryableCheckinFailurePattern = /验证码|captcha|verify/i;
-const missingAuthPattern = /not\s+logged\s+in|no\s+access\s+token|unauthorized/i;
+const missingAuthPattern = /not\s+logged\s+in|no\s+access\s+token|unauthorized|authorization\s+header\s+is\s+required/i;
 const nonLoginCookieNames = new Set(['cf_clearance', '__cf_bm', '_cfuvid']);
+const sub2ApiHosts = new Set(['sub.100xlabs.space']);
 
 function normalizeBaseUrl(url) {
   return new URL(url).origin;
@@ -173,10 +174,13 @@ function normalizeAccount(account, fallbackName = '') {
   normalized.accessToken =
     normalized.accessToken ||
     normalized.access_token ||
+    normalized.authToken ||
+    normalized.auth_token ||
     normalized.systemAccessToken ||
     normalized.system_access_token ||
     '';
 
+  normalized.siteType = normalized.siteType || normalized.site_type || normalized.type || normalized.platform || '';
   normalized.userId =
     normalized.userId ||
     normalized.user_id ||
@@ -315,6 +319,24 @@ function hasLoginCredential(account) {
   return Boolean(headers.authorization || hasLoginCookie(headers.cookie));
 }
 
+function getSiteType(account) {
+  const explicit = String(account.siteType || '').toLowerCase();
+  if (explicit) return explicit;
+
+  try {
+    const host = new URL(normalizeBaseUrl(account.url)).hostname.toLowerCase();
+    if (sub2ApiHosts.has(host)) return 'sub2api';
+  } catch {
+    // Fall through to the default NewAPI behavior.
+  }
+
+  return 'newapi';
+}
+
+function isSub2ApiAccount(account) {
+  return getSiteType(account) === 'sub2api';
+}
+
 async function fetchJson(url, options = {}) {
   try {
     const response = await fetch(url, {
@@ -398,6 +420,10 @@ function fetchJsonWithCurl(url, options = {}) {
 }
 
 async function getStatus(account) {
+  if (isSub2ApiAccount(account)) {
+    return getSub2ApiStatus(account);
+  }
+
   const baseUrl = normalizeBaseUrl(account.url);
   const { response, body } = await fetchJson(`${baseUrl}/api/status`, {
     headers: buildHeaders(account),
@@ -410,7 +436,42 @@ async function getStatus(account) {
   return body.data;
 }
 
+function getSub2ApiMessage(body) {
+  return body?.message || body?.error || body?.raw || '';
+}
+
+function unwrapSub2ApiData(response, body, action) {
+  if (response.ok && body?.code === 0) {
+    return body.data;
+  }
+
+  const message = getSub2ApiMessage(body);
+  if (response.status === 401 || /INVALID_TOKEN|UNAUTHORIZED/i.test(String(body?.code || message))) {
+    throw new Error(`${action} failed: credentials were rejected by the site (HTTP ${response.status} ${message}). Refresh auth_token from localStorage or copy a logged-in browser request as curl.`);
+  }
+
+  throw new Error(`${action} failed: HTTP ${response.status} ${message}`.trim());
+}
+
+async function getSub2ApiStatus(account) {
+  const baseUrl = normalizeBaseUrl(account.url);
+  const { response, body } = await fetchJson(`${baseUrl}/api/v1/check-in/status`, {
+    headers: buildHeaders(account),
+  });
+
+  const data = unwrapSub2ApiData(response, body, 'check-in status');
+  return {
+    checkin_enabled: data?.enabled === true,
+    system_name: 'Sub2API',
+    sub2Api: data,
+  };
+}
+
 async function getSelf(account) {
+  if (isSub2ApiAccount(account)) {
+    return getSub2ApiSelf(account);
+  }
+
   const baseUrl = normalizeBaseUrl(account.url);
   const headers = buildHeaders(account);
   const endpoints = ['/api/user/self/groups', '/api/user/self'];
@@ -439,7 +500,20 @@ async function getSelf(account) {
   throw new Error(`login check failed: ${detail}`);
 }
 
+async function getSub2ApiSelf(account) {
+  const baseUrl = normalizeBaseUrl(account.url);
+  const { response, body } = await fetchJson(`${baseUrl}/api/v1/user/profile`, {
+    headers: buildHeaders(account),
+  });
+
+  return unwrapSub2ApiData(response, body, 'login check');
+}
+
 async function checkIn(account) {
+  if (isSub2ApiAccount(account)) {
+    return checkInSub2Api(account);
+  }
+
   const baseUrl = normalizeBaseUrl(account.url);
   const headers = buildHeaders(account);
   const attempts = [
@@ -487,6 +561,60 @@ async function checkIn(account) {
     error: errors.length > 0
       ? `checkin endpoint did not accept known checkin routes: ${errors.join(' | ')}`
       : 'checkin endpoint did not accept known checkin routes',
+  };
+}
+
+function getSub2ApiTurnstileToken(account) {
+  return account.turnstileToken || account.turnstile_token || env.SUB2API_TURNSTILE_TOKEN || '';
+}
+
+async function checkInSub2Api(account) {
+  const baseUrl = normalizeBaseUrl(account.url);
+  const headers = buildHeaders(account);
+  const status = await getSub2ApiStatus(account);
+  const token = getSub2ApiTurnstileToken(account);
+
+  if (status.sub2Api?.checked_in_today) {
+    return {
+      method: 'GET',
+      endpoint: '/api/v1/check-in/status',
+      body: { data: status.sub2Api },
+      alreadyCheckedIn: true,
+    };
+  }
+
+  if (status.sub2Api?.turnstile_required && !token) {
+    return {
+      error: 'turnstile required: open the check-in page in a browser or set turnstileToken/SUB2API_TURNSTILE_TOKEN for this run',
+      captchaRequired: true,
+    };
+  }
+
+  const { response, body } = await fetchJson(`${baseUrl}/api/v1/check-in`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(token ? { turnstile_token: token } : {}),
+  });
+
+  if (response.ok && body?.code === 0) {
+    return {
+      method: 'POST',
+      endpoint: '/api/v1/check-in',
+      body: { data: body.data, message: body.data?.already_checked_in ? 'already checked in today' : 'checkin succeeded' },
+      alreadyCheckedIn: body.data?.already_checked_in === true,
+    };
+  }
+
+  const message = getSub2ApiMessage(body);
+  if (response.ok && alreadyCheckedInPattern.test(message)) {
+    return { method: 'POST', endpoint: '/api/v1/check-in', body, alreadyCheckedIn: true };
+  }
+
+  return {
+    method: 'POST',
+    endpoint: '/api/v1/check-in',
+    body,
+    error: `HTTP ${response.status} ${message}`.trim(),
   };
 }
 
@@ -542,6 +670,13 @@ async function checkInWithCaptcha(account, baseUrl, headers) {
 
 async function runAccount(account) {
   const name = account.name || normalizeBaseUrl(account.url);
+
+  if (isSub2ApiAccount(account) && !hasLoginCredential(account)) {
+    throw new Error(
+      'missing login credential: set accessToken/authToken from Sub2API localStorage.auth_token, or copy a logged-in browser request as curl',
+    );
+  }
+
   const status = await getStatus(account);
 
   if (status.checkin_enabled !== true) {
