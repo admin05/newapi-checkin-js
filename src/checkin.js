@@ -13,6 +13,7 @@ const DEFAULT_ACCOUNTS = [
   { name: 'Xcode', url: 'https://xcode.best' },
   { name: 'LPGPT', url: 'https://lpgpt.us' },
   { name: 'Muyuan', url: 'https://muyuan.do' },
+  { name: 'WinToken', url: 'https://www.wintoken.dev' },
 ];
 
 const dryRun = argv.includes('--dry-run');
@@ -815,7 +816,7 @@ async function sendBarkNotification(results, failed) {
   if (!config) return;
 
   const title = failed > 0 ? `NewAPI Check-in failed ${failed}/${results.length}` : 'NewAPI Check-in succeeded';
-  const targetUrl = 'https://muyuan.do/';
+  const targetUrl = 'https://www.wintoken.dev/profile';
   const body = `${results.map(formatNotificationLine).join('\n\n')}\n\n${targetUrl}`;
   const url = `${config.endpoint}${config.params.size > 0 ? `?${config.params.toString()}` : ''}`;
 

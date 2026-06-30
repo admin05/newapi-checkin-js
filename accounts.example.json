@@ -76,6 +76,16 @@
     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
   },
   {
+    "name": "WinToken",
+    "url": "https://www.wintoken.dev",
+    "session": "session=paste_session_cookie_here",
+    "accessToken": "",
+    "userId": "",
+    "referer": "https://www.wintoken.dev/profile",
+    "origin": "https://www.wintoken.dev",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+  },
+  {
     "name": "100XLabs",
     "url": "https://sub.100xlabs.space",
     "siteType": "sub2api",

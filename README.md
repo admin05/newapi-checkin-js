@@ -10,6 +10,7 @@ Node.js script for NewAPI-style daily check-in. It currently targets:
 - `https://lpgpt.us`
 - `https://api.avemujica.moe`
 - `https://muyuan.do`
+- `https://www.wintoken.dev`
 - `https://sub.100xlabs.space` (Sub2API)
 
 The script first reads `/api/status`. It only calls `/api/user/checkin` when
@@ -119,6 +120,11 @@ required login headers. For those sites, including `https://muyuan.do`, copy a
 fresh request from the logged-in browser as curl and use that curl text in
 `NEWAPI_ACCOUNTS_CURL` or the account's `curl` field so the script can extract
 the full cookie and bearer token safely.
+
+`https://www.wintoken.dev` exposes NewAPI-style check-in through
+`/api/user/checkin` and has `checkin_enabled` set in `/api/status`. It still
+requires a real logged-in browser cookie or bearer token; unauthenticated
+requests return `HTTP 401 Unauthorized`.
 
 `cf_clearance` is a Cloudflare clearance cookie, not the NewAPI login session.
 It can rotate frequently and is useful only when sent together with the real
