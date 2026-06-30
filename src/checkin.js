@@ -816,7 +816,7 @@ async function sendBarkNotification(results, failed) {
   if (!config) return;
 
   const title = failed > 0 ? `NewAPI Check-in failed ${failed}/${results.length}` : 'NewAPI Check-in succeeded';
-  const targetUrl = 'https://www.wintoken.dev/profile';
+  const targetUrl = 'https://muyuan.do/';
   const body = `${results.map(formatNotificationLine).join('\n\n')}\n\n${targetUrl}`;
   const url = `${config.endpoint}${config.params.size > 0 ? `?${config.params.toString()}` : ''}`;
 
