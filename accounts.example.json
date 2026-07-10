@@ -23,6 +23,7 @@
     "name": "Xiaomu API",
     "url": "https://xiaomuai.cn",
     "session": "session=paste_session_cookie_here",
+    "turnstileToken": "",
     "userId": "",
     "referer": "",
     "origin": "",

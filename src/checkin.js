@@ -21,6 +21,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = dirname(scriptDir);
 const alreadyCheckedInPattern = /今日已签到|已经签到|已签到|重复签到|already\s+(checked|signed)/i;
 const captchaRequiredPattern = /请输入验证码|验证码|captcha/i;
+const turnstileRequiredPattern = /turnstile|cf-turnstile|人机验证|真人验证/i;
 const retryableCheckinFailurePattern = /验证码|captcha|verify/i;
 const missingAuthPattern = /not\s+logged\s+in|no\s+access\s+token|unauthorized|authorization\s+header\s+is\s+required/i;
 const nonLoginCookieNames = new Set(['cf_clearance', '__cf_bm', '_cfuvid']);
@@ -61,6 +62,45 @@ function parseCurlCookie(block, headers) {
   return headers.cookie || '';
 }
 
+function parseCurlBody(block) {
+  const bodyMatch = block.match(/(?:^|\s)(?:--data-raw|--data-binary|--data|-d)\s+(['"])([\s\S]*?)\1/);
+  return bodyMatch ? bodyMatch[2].trim() : '';
+}
+
+function extractTurnstileTokenFromBody(body) {
+  if (!body) return '';
+
+  try {
+    const parsed = JSON.parse(body);
+    if (parsed && typeof parsed === 'object') {
+      return (
+        parsed.turnstile_token ||
+        parsed.turnstileToken ||
+        parsed['cf-turnstile-response'] ||
+        parsed.cfTurnstileResponse ||
+        ''
+      );
+    }
+  } catch {
+    // Fall through to form and regex parsing.
+  }
+
+  try {
+    const params = new URLSearchParams(body);
+    return (
+      params.get('turnstile_token') ||
+      params.get('turnstileToken') ||
+      params.get('cf-turnstile-response') ||
+      ''
+    );
+  } catch {
+    // Fall through to a final best-effort regex.
+  }
+
+  const match = body.match(/(?:turnstile_token|turnstileToken|cf-turnstile-response)=([^&\s]+)/i);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
 function parseCurlAccounts(source) {
   const accounts = [];
 
@@ -71,6 +111,7 @@ function parseCurlAccounts(source) {
     const url = urlMatch[2];
     const headers = parseCurlHeaders(block);
     const cookie = parseCurlCookie(block, headers);
+    const body = parseCurlBody(block);
     const baseUrl = normalizeBaseUrl(url);
 
     accounts.push({
@@ -82,6 +123,7 @@ function parseCurlAccounts(source) {
       referer: headers.referer || '',
       origin: headers.origin || '',
       userAgent: headers['user-agent'] || '',
+      turnstileToken: extractTurnstileTokenFromBody(body),
       extraHeaders: Object.fromEntries(
         Object.entries(headers).filter(([key]) =>
           !['authorization', 'cookie', 'new-api-user', 'x-user-id', 'referer', 'origin', 'user-agent'].includes(key),
@@ -191,6 +233,12 @@ function normalizeAccount(account, fallbackName = '') {
 
   normalized.cfClearance = normalized.cfClearance || normalized.cf_clearance || '';
   normalized.captchaAnswer = normalized.captchaAnswer || normalized.captcha_answer || '';
+  normalized.turnstileToken =
+    normalized.turnstileToken ||
+    normalized.turnstile_token ||
+    normalized.cfTurnstileResponse ||
+    normalized.cf_turnstile_response ||
+    '';
 
   if (normalized.cfClearance) {
     normalized.session = normalized.session
@@ -210,12 +258,20 @@ function normalizeAccount(account, fallbackName = '') {
   }
 
   const derived = parsed[0];
-  return {
+  const merged = {
     ...derived,
     ...account,
     name: account.name || derived.name,
     url: account.url || derived.url,
   };
+
+  for (const key of ['session', 'accessToken', 'userId', 'referer', 'origin', 'userAgent', 'turnstileToken']) {
+    if (!merged[key] && derived[key]) {
+      merged[key] = derived[key];
+    }
+  }
+
+  return merged;
 }
 
 function loadAccountsFile(configPath) {
@@ -543,6 +599,33 @@ async function getSub2ApiSelf(account) {
   return unwrapSub2ApiData(response, body, 'login check');
 }
 
+function getTurnstileToken(account, envNames) {
+  const candidates = [
+    account.turnstileToken,
+    account.turnstile_token,
+    account.cfTurnstileResponse,
+    account.cf_turnstile_response,
+    ...envNames.map((name) => env[name]),
+  ];
+
+  const token = candidates.find((value) => value !== undefined && value !== null && String(value).trim() !== '');
+  return token ? String(token).trim() : '';
+}
+
+function buildTurnstilePayload(token) {
+  if (!token) return {};
+
+  return {
+    turnstile_token: token,
+    turnstileToken: token,
+    'cf-turnstile-response': token,
+  };
+}
+
+function getNewApiTurnstileToken(account) {
+  return getTurnstileToken(account, ['NEWAPI_TURNSTILE_TOKEN', 'TURNSTILE_TOKEN']);
+}
+
 async function checkIn(account) {
   if (isSub2ApiAccount(account)) {
     return checkInSub2Api(account);
@@ -550,10 +633,12 @@ async function checkIn(account) {
 
   const baseUrl = normalizeBaseUrl(account.url);
   const headers = buildHeaders(account);
+  const turnstileToken = getNewApiTurnstileToken(account);
+  const postBody = JSON.stringify(buildTurnstilePayload(turnstileToken));
   const attempts = [
-    { endpoint: '/api/user/checkin', method: 'POST', body: '{}' },
+    { endpoint: '/api/user/checkin', method: 'POST', body: postBody },
     { endpoint: '/api/user/checkin', method: 'GET' },
-    { endpoint: '/api/user/checkin/reward-pack-plan', method: 'POST', body: '{}' },
+    { endpoint: '/api/user/checkin/reward-pack-plan', method: 'POST', body: postBody },
   ];
   const errors = [];
 
@@ -580,6 +665,16 @@ async function checkIn(account) {
       }
     }
 
+    if (response.ok && turnstileRequiredPattern.test(message) && !turnstileToken) {
+      return {
+        method: attempt.method,
+        endpoint: attempt.endpoint,
+        body,
+        error: 'turnstile required: open the check-in page in a browser and copy the current check-in request as curl, or set turnstileToken/NEWAPI_TURNSTILE_TOKEN for this run',
+        captchaRequired: true,
+      };
+    }
+
     errors.push(`${attempt.method} ${attempt.endpoint}: HTTP ${response.status} ${message}`.trim());
 
     if (response.ok && retryableCheckinFailurePattern.test(message)) {
@@ -598,15 +693,11 @@ async function checkIn(account) {
   };
 }
 
-function getSub2ApiTurnstileToken(account) {
-  return account.turnstileToken || account.turnstile_token || env.SUB2API_TURNSTILE_TOKEN || '';
-}
-
 async function checkInSub2Api(account) {
   const baseUrl = normalizeBaseUrl(account.url);
   const headers = buildHeaders(account);
   const status = await getSub2ApiStatus(account);
-  const token = getSub2ApiTurnstileToken(account);
+  const token = getTurnstileToken(account, ['SUB2API_TURNSTILE_TOKEN', 'TURNSTILE_TOKEN']);
 
   if (status.sub2Api?.checked_in_today) {
     return {
@@ -627,7 +718,7 @@ async function checkInSub2Api(account) {
   const { response, body } = await fetchJson(`${baseUrl}/api/v1/check-in`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(token ? { turnstile_token: token } : {}),
+    body: JSON.stringify(buildTurnstilePayload(token)),
   });
 
   if (response.ok && body?.code === 0) {
