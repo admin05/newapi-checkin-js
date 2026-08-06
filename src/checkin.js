@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { env, argv, exit } from 'node:process';
 import { spawn } from 'node:child_process';
 import { dirname, isAbsolute, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const DEFAULT_ACCOUNTS = [
   { name: 'AveMujica API', url: 'https://api.avemujica.moe' },
@@ -33,12 +33,75 @@ function normalizeBaseUrl(url) {
 
 function splitCurlBlocks(source) {
   const blocks = [];
-  const regex = /(^|\n)\s*curl\s+['"][^\n]*?['"][\s\S]*?(?=(?:\n\s*curl\s+)|$)/g;
+  const regex = /(^|\n)\s*curl\b[\s\S]*?(?=(?:\n\s*curl\b)|$)/g;
   for (const match of source.matchAll(regex)) {
     const block = match[0].replace(/^\n/, '').trim();
     if (block) blocks.push(block);
   }
   return blocks;
+}
+
+function tokenizeCurl(block) {
+  const tokens = [];
+  const input = String(block || '').replace(/\\\r?\n/g, ' ').replace(/\\n/g, ' ');
+  let token = '';
+  let quote = '';
+
+  for (let i = 0; i < input.length; i += 1) {
+    const char = input[i];
+
+    if (quote) {
+      if (char === quote) {
+        quote = '';
+      } else if (char === '\\' && quote === '"' && i + 1 < input.length) {
+        token += input[i + 1];
+        i += 1;
+      } else {
+        token += char;
+      }
+      continue;
+    }
+
+    if (char === '\'' || char === '"') {
+      quote = char;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (token) {
+        tokens.push(token);
+        token = '';
+      }
+      continue;
+    }
+
+    if (char === '\\' && i + 1 < input.length) {
+      token += input[i + 1];
+      i += 1;
+      continue;
+    }
+
+    token += char;
+  }
+
+  if (token) tokens.push(token);
+  return tokens;
+}
+
+function extractCurlUrl(block) {
+  const tokens = tokenizeCurl(block);
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (token === '--url' && tokens[index + 1]) {
+      return tokens[index + 1];
+    }
+    if (token.startsWith('--url=')) {
+      return token.slice('--url='.length);
+    }
+  }
+
+  return tokens.find((token) => /^https?:\/\//i.test(token)) || '';
 }
 
 function parseCurlHeaders(block) {
@@ -101,14 +164,13 @@ function extractTurnstileTokenFromBody(body) {
   return match ? decodeURIComponent(match[1]) : '';
 }
 
-function parseCurlAccounts(source) {
+export function parseCurlAccounts(source) {
   const accounts = [];
 
   for (const block of splitCurlBlocks(source)) {
-    const urlMatch = block.match(/curl\s+(['"])(.*?)\1/);
-    if (!urlMatch) continue;
+    const url = extractCurlUrl(block);
+    if (!url) continue;
 
-    const url = urlMatch[2];
     const headers = parseCurlHeaders(block);
     const cookie = parseCurlCookie(block, headers);
     const body = parseCurlBody(block);
@@ -968,7 +1030,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(`[FATAL] ${error.message}`);
-  exit(1);
-});
+if (argv[1] && import.meta.url === pathToFileURL(argv[1]).href) {
+  main().catch((error) => {
+    console.error(`[FATAL] ${error.message}`);
+    exit(1);
+  });
+}

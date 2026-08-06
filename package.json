@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "checkin": "node src/checkin.js",
-    "check": "node src/checkin.js --dry-run"
+    "check": "node src/checkin.js --dry-run",
+    "test": "node src/checkin.test.js"
   },
   "engines": {
     "node": ">=18"
