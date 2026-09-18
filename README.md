@@ -139,6 +139,13 @@ fresh request from the logged-in browser as curl and use that curl text in
 `NEWAPI_ACCOUNTS_CURL` or the account's `curl` field so the script can extract
 the full cookie and bearer token safely.
 
+Some newer NewAPI sites, including CiYuan2API, rotate short-lived Bearer tokens.
+When a request returns `401` because the access token is invalid or expired, the
+script uses the saved login Cookie to call `/api/user/auth/refresh`, stores the
+returned token in memory, and retries the request once. The browser-copied curl
+must include the full `Cookie` header; a stale Bearer token by itself cannot be
+refreshed.
+
 `https://www.wintoken.dev` exposes NewAPI-style check-in through
 `/api/user/checkin` and has `checkin_enabled` set in `/api/status`. It still
 requires a real logged-in browser cookie or bearer token; unauthenticated

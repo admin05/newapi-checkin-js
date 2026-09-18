@@ -182,6 +182,7 @@ export function parseCurlAccounts(source) {
       session: cookie.replace(/^cookie:\s*/i, ''),
       accessToken: headers.authorization ? headers.authorization.replace(/^Bearer\s+/i, '') : '',
       userId: headers['new-api-user'] || headers['x-user-id'] || '',
+      authSession: headers['x-auth-session'] || '',
       referer: headers.referer || '',
       origin: headers.origin || '',
       userAgent: headers['user-agent'] || '',
@@ -292,6 +293,7 @@ function normalizeAccount(account, fallbackName = '') {
     normalized.apiUser ||
     normalized.api_user ||
     '';
+  normalized.authSession = normalized.authSession || normalized.auth_session || normalized['x-auth-session'] || '';
 
   normalized.cfClearance = normalized.cfClearance || normalized.cf_clearance || '';
   normalized.captchaAnswer = normalized.captchaAnswer || normalized.captcha_answer || '';
@@ -422,6 +424,10 @@ function buildHeaders(account) {
     headers['x-user-id'] = String(account.userId);
   }
 
+  if (account.authSession) {
+    headers['x-auth-session'] = String(account.authSession);
+  }
+
   headers.referer = account.referer || `${normalizeBaseUrl(account.url)}/console/personal`;
 
   headers.origin = account.origin || normalizeBaseUrl(account.url);
@@ -489,6 +495,55 @@ function parseJsonResponse(status, headers, text) {
     },
     body,
   };
+}
+
+function isAccessTokenRejected(response, body) {
+  const message = body?.message || body?.error || body?.raw || '';
+  return response.status === 401 && /access\s+token|token.*(?:invalid|expired)|(?:invalid|expired).*token/i.test(String(message));
+}
+
+async function refreshNewApiAccessToken(account) {
+  if (!account.session) return false;
+
+  const headers = buildHeaders({ ...account, accessToken: '' });
+  delete headers.authorization;
+
+  const baseUrl = normalizeBaseUrl(account.url);
+  const { response, body } = await fetchJson(`${baseUrl}/api/user/auth/refresh`, {
+    method: 'POST',
+    headers,
+  });
+
+  const nextToken = body?.success === true ? body.data?.access_token : '';
+  if (!response.ok || typeof nextToken !== 'string' || nextToken.trim() === '') {
+    return false;
+  }
+
+  account.accessToken = nextToken.trim();
+  if (body.data.session?.sid) {
+    account.authSession = body.data.session.sid;
+  }
+  return true;
+}
+
+async function fetchAccountJson(account, url, options = {}) {
+  const initial = await fetchJson(url, {
+    ...options,
+    headers: options.headers || buildHeaders(account),
+  });
+
+  if (!isAccessTokenRejected(initial.response, initial.body)) {
+    return initial;
+  }
+
+  if (!(await refreshNewApiAccessToken(account))) {
+    return initial;
+  }
+
+  return fetchJson(url, {
+    ...options,
+    headers: buildHeaders(account),
+  });
 }
 
 function fetchJsonWithCurl(url, options = {}) {
@@ -625,14 +680,11 @@ async function getSelf(account) {
   }
 
   const baseUrl = normalizeBaseUrl(account.url);
-  const headers = buildHeaders(account);
   const endpoints = ['/api/user/self/groups', '/api/user/self'];
   const errors = [];
 
   for (const endpoint of endpoints) {
-    const { response, body } = await fetchJson(`${baseUrl}${endpoint}`, {
-      headers,
-    });
+    const { response, body } = await fetchAccountJson(account, `${baseUrl}${endpoint}`);
 
     if (response.ok && body?.success) {
       return body.data;
@@ -694,7 +746,6 @@ async function checkIn(account) {
   }
 
   const baseUrl = normalizeBaseUrl(account.url);
-  const headers = buildHeaders(account);
   const turnstileToken = getNewApiTurnstileToken(account);
   const postBody = JSON.stringify(buildTurnstilePayload(turnstileToken));
   const attempts = [
@@ -705,9 +756,8 @@ async function checkIn(account) {
   const errors = [];
 
   for (const attempt of attempts) {
-    const { response, body } = await fetchJson(`${baseUrl}${attempt.endpoint}`, {
+    const { response, body } = await fetchAccountJson(account, `${baseUrl}${attempt.endpoint}`, {
       method: attempt.method,
-      headers,
       body: attempt.body,
     });
 
@@ -721,7 +771,7 @@ async function checkIn(account) {
     }
 
     if (response.ok && captchaRequiredPattern.test(message)) {
-      const captchaResult = await checkInWithCaptcha(account, baseUrl, headers);
+      const captchaResult = await checkInWithCaptcha(account, baseUrl);
       if (!captchaResult.error || captchaResult.captchaRequired) {
         return captchaResult;
       }
@@ -809,7 +859,7 @@ function getCaptchaAnswer(account) {
   return account.captchaAnswer || env.NEWAPI_CAPTCHA_ANSWER || '';
 }
 
-async function checkInWithCaptcha(account, baseUrl, headers) {
+async function checkInWithCaptcha(account, baseUrl) {
   const answer = getCaptchaAnswer(account).trim();
   if (!answer) {
     return {
@@ -818,9 +868,8 @@ async function checkInWithCaptcha(account, baseUrl, headers) {
     };
   }
 
-  const captcha = await fetchJson(`${baseUrl}/api/user/checkin/captcha`, {
+  const captcha = await fetchAccountJson(account, `${baseUrl}/api/user/checkin/captcha`, {
     method: 'POST',
-    headers,
   });
 
   if (!captcha.response.ok || !captcha.body?.success || !captcha.body?.data?.captcha_id) {
@@ -829,9 +878,8 @@ async function checkInWithCaptcha(account, baseUrl, headers) {
     };
   }
 
-  const { response, body } = await fetchJson(`${baseUrl}/api/user/checkin`, {
+  const { response, body } = await fetchAccountJson(account, `${baseUrl}/api/user/checkin`, {
     method: 'POST',
-    headers,
     body: JSON.stringify({
       captcha_id: captcha.body.data.captcha_id,
       captcha_answer: answer,
