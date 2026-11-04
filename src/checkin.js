@@ -564,7 +564,11 @@ function isAccessTokenRejected(response, body) {
 }
 
 async function refreshNewApiAccessToken(account) {
-  if (!account.session) return false;
+  account.authRefreshError = '';
+  if (!account.session) {
+    account.authRefreshError = 'no browser Cookie is configured';
+    return false;
+  }
 
   const headers = buildHeaders({ ...account, accessToken: '' });
   delete headers.authorization;
@@ -577,6 +581,8 @@ async function refreshNewApiAccessToken(account) {
 
   const nextToken = body?.success === true ? body.data?.access_token : '';
   if (!response.ok || typeof nextToken !== 'string' || nextToken.trim() === '') {
+    const detail = body?.code || body?.message || body?.error || '';
+    account.authRefreshError = `HTTP ${response.status}${detail ? ` ${String(detail).slice(0, 160)}` : ''}`;
     return false;
   }
 
@@ -598,6 +604,9 @@ async function fetchAccountJson(account, url, options = {}) {
   }
 
   if (!(await refreshNewApiAccessToken(account))) {
+    if (isXkRelayAccount(account)) {
+      throw new Error(`xkrelay access-token refresh failed: ${account.authRefreshError || 'refresh endpoint rejected the browser Cookie'}`);
+    }
     return initial;
   }
 

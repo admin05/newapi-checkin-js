@@ -112,4 +112,31 @@ await assert.rejects(
   /invalid request header "user-agent".*userAgent field/,
 );
 
+const rejectedRefreshFetch = globalThis.fetch;
+globalThis.fetch = async (url, options = {}) => {
+  if (String(url).endsWith('/api/user/auth/refresh')) {
+    return new Response(JSON.stringify({ success: false, code: 'AUTH_REFRESH_INVALID' }), {
+      status: 401,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+  return new Response(JSON.stringify({ success: false, message: 'Unauthorized, invalid access token' }), {
+    status: 401,
+    headers: { 'content-type': 'application/json' },
+  });
+};
+
+try {
+  await assert.rejects(
+    runAccount({
+      name: 'XKRelay rejected refresh',
+      url: 'https://xkrelay.com',
+      session: 'new_api_refresh=test-refresh; new_api_has_session=1',
+    }),
+    /access-token refresh failed: HTTP 401 AUTH_REFRESH_INVALID/,
+  );
+} finally {
+  globalThis.fetch = rejectedRefreshFetch;
+}
+
 console.log('checkin parser tests passed');
