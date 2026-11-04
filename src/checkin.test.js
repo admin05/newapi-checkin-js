@@ -89,14 +89,13 @@ try {
     name: 'XKRelay refresh',
     url: 'https://xkrelay.com',
     accessToken: 'expired-access-token',
-    session: 'new_api_has_session=1',
-    authSession: 'session-sid-123',
+    session: 'new_api_refresh=session-sid-123.refresh-secret; new_api_has_session=1',
   });
   const refreshRequest = refreshRequests.find(({ url }) => url.endsWith('/api/user/auth/refresh'));
 
   assert.equal(result.ok, true);
   assert.equal(refreshRequest.options.headers['x-auth-session'], 'session-sid-123');
-  assert.equal(refreshRequest.options.headers.cookie, 'new_api_has_session=1');
+  assert.equal(refreshRequest.options.headers.cookie, 'new_api_refresh=session-sid-123.refresh-secret; new_api_has_session=1');
   assert.ok(refreshRequests.some(({ options }) => options.headers?.authorization === 'Bearer refreshed-access-token'));
 } finally {
   globalThis.fetch = refreshFetch;

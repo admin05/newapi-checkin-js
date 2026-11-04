@@ -218,6 +218,11 @@ function getCookieNames(cookie) {
     .filter(Boolean);
 }
 
+function getRefreshSessionId(cookie) {
+  const match = String(cookie || '').match(/(?:^|;\s*)new_api_refresh=([^. ;]+)\.[^;]+/i);
+  return match ? match[1] : '';
+}
+
 function hasLoginCookie(cookie) {
   const names = getCookieNames(cookie);
   return names.some((name) => !nonLoginCookieNames.has(name));
@@ -570,7 +575,11 @@ async function refreshNewApiAccessToken(account) {
     return false;
   }
 
-  const headers = buildHeaders({ ...account, accessToken: '' });
+  const headers = buildHeaders({
+    ...account,
+    accessToken: '',
+    authSession: account.authSession || getRefreshSessionId(account.session),
+  });
   delete headers.authorization;
 
   const baseUrl = normalizeBaseUrl(account.url);
