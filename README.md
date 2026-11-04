@@ -71,15 +71,17 @@ Beijing-month status and submits the returned date with a generated request ID:
   "url": "https://xkrelay.com",
   "accessToken": "paste_access_token_here",
   "session": "new_api_has_session=1",
+  "authSession": "paste_session.sid_here",
   "referer": "https://xkrelay.com/qq-checkin",
   "origin": "https://xkrelay.com",
   "userAgent": "paste_the_browser_user_agent_here"
 }
 ```
 
-The access token is short-lived. For unattended runs, the browser Cookie must
-also be sufficient for `/api/user/auth/refresh`; otherwise refresh the token
-from a new logged-in browser request before running the script.
+The access token is short-lived. `authSession` is the `session.sid` value sent
+as the `X-Auth-Session` header by the browser's refresh request. Keep the
+browser Cookie and this session ID configured so the script can renew the
+token through `/api/user/auth/refresh` during unattended runs.
 
 The script also accepts field names used by similar NewAPI check-in projects:
 

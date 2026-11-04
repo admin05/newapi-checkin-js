@@ -483,7 +483,7 @@ function unwrapXkRelayQqData(response, body, action) {
   if (!response.ok || body?.success !== true || !body.data || typeof body.data !== 'object') {
     const message = body?.message || body?.code || body?.error || compactBodyForError(body);
     if (response.status === 401 || /invalid access token|unauthorized/i.test(String(message))) {
-      throw new Error(`${action} failed: xkrelay credentials were rejected; refresh the browser access token and include the browser Cookie`);
+      throw new Error(`${action} failed: xkrelay credentials were rejected; refresh the access token and provide the browser Cookie plus authSession (the X-Auth-Session/session.sid value) so the script can renew it`);
     }
     throw new Error(`${action} failed: HTTP ${response.status} ${message}`.trim());
   }

@@ -55,4 +55,51 @@ try {
   globalThis.fetch = originalFetch;
 }
 
+const refreshFetch = globalThis.fetch;
+const refreshRequests = [];
+globalThis.fetch = async (url, options = {}) => {
+  const request = { url: String(url), options };
+  refreshRequests.push(request);
+  if (request.url.endsWith('/api/user/auth/refresh')) {
+    return new Response(JSON.stringify({
+      success: true,
+      data: { access_token: 'refreshed-access-token', session: { sid: 'session-sid-123' } },
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }
+  if (options.headers?.authorization === 'Bearer expired-access-token') {
+    return new Response(JSON.stringify({ success: false, message: 'Unauthorized, invalid access token' }), {
+      status: 401,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+  if (options.method === 'POST') {
+    return new Response(JSON.stringify({ success: true, data: { status: 'credited' } }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+  return new Response(JSON.stringify({
+    success: true,
+    data: { activity: { enabled: true }, today: '2026-11-04', today_reward: null },
+  }), { status: 200, headers: { 'content-type': 'application/json' } });
+};
+
+try {
+  const result = await runAccount({
+    name: 'XKRelay refresh',
+    url: 'https://xkrelay.com',
+    accessToken: 'expired-access-token',
+    session: 'new_api_has_session=1',
+    authSession: 'session-sid-123',
+  });
+  const refreshRequest = refreshRequests.find(({ url }) => url.endsWith('/api/user/auth/refresh'));
+
+  assert.equal(result.ok, true);
+  assert.equal(refreshRequest.options.headers['x-auth-session'], 'session-sid-123');
+  assert.equal(refreshRequest.options.headers.cookie, 'new_api_has_session=1');
+  assert.ok(refreshRequests.some(({ options }) => options.headers?.authorization === 'Bearer refreshed-access-token'));
+} finally {
+  globalThis.fetch = refreshFetch;
+}
+
 console.log('checkin parser tests passed');
