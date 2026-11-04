@@ -599,7 +599,8 @@ async function fetchAccountJson(account, url, options = {}) {
     headers: options.headers || buildHeaders(account),
   });
 
-  if (!isAccessTokenRejected(initial.response, initial.body)) {
+  const shouldRefreshXkRelay = isXkRelayAccount(account) && initial.response.status === 401;
+  if (!isAccessTokenRejected(initial.response, initial.body) && !shouldRefreshXkRelay) {
     return initial;
   }
 

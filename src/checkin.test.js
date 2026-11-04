@@ -120,7 +120,7 @@ globalThis.fetch = async (url, options = {}) => {
       headers: { 'content-type': 'application/json' },
     });
   }
-  return new Response(JSON.stringify({ success: false, message: 'Unauthorized, invalid access token' }), {
+  return new Response(JSON.stringify({ success: false, code: 'AUTH_UNAUTHORIZED', message: 'Unauthorized' }), {
     status: 401,
     headers: { 'content-type': 'application/json' },
   });
