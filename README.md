@@ -12,6 +12,7 @@ Node.js script for NewAPI-style daily check-in. It currently targets:
 - `https://muyuan.do`
 - `https://www.wintoken.dev`
 - `https://sub.100xlabs.space` (Sub2API)
+- `https://xkrelay.com` (QQ check-in rewards)
 
 The script first reads `/api/status`. It only calls `/api/user/checkin` when
 `checkin_enabled` is `true`. For compatible sites that use a reward pack
@@ -58,6 +59,27 @@ For `https://sub.100xlabs.space`, use the Bearer token stored in browser
 
 If the check-in card requires Turnstile for your account, pass the current
 token for that run in `turnstileToken` or `SUB2API_TURNSTILE_TOKEN`.
+
+`https://xkrelay.com` uses its QQ check-in rewards flow at `/qq-checkin`, not
+the standard NewAPI check-in endpoint. Provide the logged-in browser Bearer
+token and Cookie from a browser-copied request; the script checks the current
+Beijing-month status and submits the returned date with a generated request ID:
+
+```json
+{
+  "name": "XKRelay QQ Check-in",
+  "url": "https://xkrelay.com",
+  "accessToken": "paste_access_token_here",
+  "session": "new_api_has_session=1",
+  "referer": "https://xkrelay.com/qq-checkin",
+  "origin": "https://xkrelay.com",
+  "userAgent": "paste_the_browser_user_agent_here"
+}
+```
+
+The access token is short-lived. For unattended runs, the browser Cookie must
+also be sufficient for `/api/user/auth/refresh`; otherwise refresh the token
+from a new logged-in browser request before running the script.
 
 The script also accepts field names used by similar NewAPI check-in projects:
 

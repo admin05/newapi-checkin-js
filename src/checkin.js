@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { env, argv, exit } from 'node:process';
 import { spawn } from 'node:child_process';
 import { dirname, isAbsolute, join } from 'node:path';
@@ -26,6 +27,7 @@ const retryableCheckinFailurePattern = /验证码|captcha|verify/i;
 const missingAuthPattern = /not\s+logged\s+in|no\s+access\s+token|unauthorized|authorization\s+header\s+is\s+required/i;
 const nonLoginCookieNames = new Set(['cf_clearance', '__cf_bm', '_cfuvid']);
 const sub2ApiHosts = new Set(['sub.100xlabs.space']);
+const xkRelayHosts = new Set(['xkrelay.com', 'www.xkrelay.com']);
 
 function normalizeBaseUrl(url) {
   return new URL(url).origin;
@@ -451,6 +453,7 @@ function getSiteType(account) {
   try {
     const host = new URL(normalizeBaseUrl(account.url)).hostname.toLowerCase();
     if (sub2ApiHosts.has(host)) return 'sub2api';
+    if (xkRelayHosts.has(host)) return 'xkrelay-qq';
   } catch {
     // Fall through to the default NewAPI behavior.
   }
@@ -460,6 +463,48 @@ function getSiteType(account) {
 
 function isSub2ApiAccount(account) {
   return getSiteType(account) === 'sub2api';
+}
+
+function isXkRelayAccount(account) {
+  return getSiteType(account) === 'xkrelay-qq';
+}
+
+function getBeijingMonth() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}`;
+}
+
+function unwrapXkRelayQqData(response, body, action) {
+  if (!response.ok || body?.success !== true || !body.data || typeof body.data !== 'object') {
+    const message = body?.message || body?.code || body?.error || compactBodyForError(body);
+    if (response.status === 401 || /invalid access token|unauthorized/i.test(String(message))) {
+      throw new Error(`${action} failed: xkrelay credentials were rejected; refresh the browser access token and include the browser Cookie`);
+    }
+    throw new Error(`${action} failed: HTTP ${response.status} ${message}`.trim());
+  }
+  return body.data;
+}
+
+async function getXkRelayQqStatus(account) {
+  const baseUrl = normalizeBaseUrl(account.url);
+  const params = new URLSearchParams({ month: getBeijingMonth(), page: '1', date: '' });
+  const { response, body } = await fetchAccountJson(account, `${baseUrl}/api/qq-rewards/self?${params}`, {
+    headers: buildHeaders({ ...account, referer: account.referer || `${baseUrl}/qq-checkin` }),
+  });
+  const data = unwrapXkRelayQqData(response, body, 'QQ check-in status');
+  const activity = data.activity || data.qq_rewards || data.reward_activity || {};
+  const enabled = data.enabled ?? activity.enabled;
+
+  return {
+    checkin_enabled: enabled === true,
+    system_name: '深空 API QQ 签到',
+    xkRelayQq: data,
+  };
 }
 
 async function fetchJson(url, options = {}) {
@@ -631,6 +676,10 @@ function unwrapNewApiStatus(response, body) {
 }
 
 async function getStatus(account) {
+  if (isXkRelayAccount(account)) {
+    return getXkRelayQqStatus(account);
+  }
+
   if (isSub2ApiAccount(account)) {
     return getSub2ApiStatus(account);
   }
@@ -675,6 +724,10 @@ async function getSub2ApiStatus(account) {
 }
 
 async function getSelf(account) {
+  if (isXkRelayAccount(account)) {
+    return { username: account.name || new URL(normalizeBaseUrl(account.url)).hostname };
+  }
+
   if (isSub2ApiAccount(account)) {
     return getSub2ApiSelf(account);
   }
@@ -741,6 +794,10 @@ function getNewApiTurnstileToken(account) {
 }
 
 async function checkIn(account) {
+  if (isXkRelayAccount(account)) {
+    return checkInXkRelayQq(account);
+  }
+
   if (isSub2ApiAccount(account)) {
     return checkInSub2Api(account);
   }
@@ -802,6 +859,46 @@ async function checkIn(account) {
     error: errors.length > 0
       ? `checkin endpoint did not accept known checkin routes: ${errors.join(' | ')}`
       : 'checkin endpoint did not accept known checkin routes',
+  };
+}
+
+async function checkInXkRelayQq(account) {
+  const baseUrl = normalizeBaseUrl(account.url);
+  const status = await getXkRelayQqStatus(account);
+  const data = status.xkRelayQq;
+
+  if (!status.checkin_enabled) {
+    return { skipped: true, message: 'QQ check-in activity is not open' };
+  }
+
+  if (data.today_reward) {
+    return { alreadyCheckedIn: true, message: 'already checked in today' };
+  }
+
+  if (!data.today) {
+    return { error: 'QQ check-in status did not include today; refresh the site and try again' };
+  }
+
+  const { response, body } = await fetchAccountJson(account, `${baseUrl}/api/qq-rewards/self`, {
+    method: 'POST',
+    headers: buildHeaders({ ...account, referer: account.referer || `${baseUrl}/qq-checkin` }),
+    body: JSON.stringify({ request_id: randomUUID(), date: data.today }),
+  });
+
+  if (response.ok && body?.success === true) {
+    return { method: 'POST', endpoint: '/api/qq-rewards/self', body };
+  }
+
+  const message = body?.message || body?.code || body?.error || compactBodyForError(body);
+  if (/already_signed|already checked|already_checkin/i.test(String(message))) {
+    return { method: 'POST', endpoint: '/api/qq-rewards/self', body, alreadyCheckedIn: true };
+  }
+
+  return {
+    method: 'POST',
+    endpoint: '/api/qq-rewards/self',
+    body,
+    error: `QQ check-in failed: HTTP ${response.status} ${message}`.trim(),
   };
 }
 
@@ -903,7 +1000,7 @@ async function checkInWithCaptcha(account, baseUrl) {
   };
 }
 
-async function runAccount(account) {
+export async function runAccount(account) {
   const name = account.name || normalizeBaseUrl(account.url);
 
   if (isSub2ApiAccount(account) && !hasLoginCredential(account)) {
