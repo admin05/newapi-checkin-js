@@ -438,6 +438,22 @@ function buildHeaders(account) {
     headers['user-agent'] = account.userAgent;
   }
 
+  for (const [name, value] of Object.entries(headers)) {
+    const invalidIndex = [...String(value)].findIndex((character) => character.codePointAt(0) > 255);
+    if (invalidIndex !== -1) {
+      const configField = {
+        cookie: 'session/cookies',
+        referer: 'referer',
+        origin: 'origin',
+        'user-agent': 'userAgent',
+      }[name.toLowerCase()];
+      const fieldHint = configField ? ` (check the account ${configField} field)` : '';
+      throw new Error(
+        `invalid request header "${name}": non-ASCII character at index ${invalidIndex}${fieldHint}`,
+      );
+    }
+  }
+
   return headers;
 }
 

@@ -102,4 +102,14 @@ try {
   globalThis.fetch = refreshFetch;
 }
 
+await assert.rejects(
+  runAccount({
+    name: '深空 API',
+    url: 'https://xkrelay.com',
+    session: 'new_api_has_session=1',
+    userAgent: '浏览器 User-Agent',
+  }),
+  /invalid request header "user-agent".*userAgent field/,
+);
+
 console.log('checkin parser tests passed');
