@@ -1081,6 +1081,9 @@ export async function runAccount(account) {
 
   const user = await getSelf(account);
   const result = await checkIn(account);
+  const userLabel = isXkRelayAccount(account)
+    ? ''
+    : user.username || user.display_name || user.email || user.id || '';
 
   if (result.error) {
     if (result.captchaRequired) {
@@ -1089,7 +1092,7 @@ export async function runAccount(account) {
         ok: true,
         skipped: true,
         message: result.error,
-        user: user.username || user.display_name || user.email || user.id || '',
+        ...(userLabel ? { user: userLabel } : {}),
         systemName: status.system_name || '',
       };
     }
@@ -1098,7 +1101,7 @@ export async function runAccount(account) {
       name,
       ok: false,
       message: result.error,
-      user: user.username || user.display_name || user.email || user.id || '',
+      ...(userLabel ? { user: userLabel } : {}),
       systemName: status.system_name || '',
     };
   }
@@ -1108,7 +1111,7 @@ export async function runAccount(account) {
     ok: true,
     message: result.body?.message || (result.alreadyCheckedIn ? 'already checked in today' : 'checkin succeeded'),
     method: result.method,
-    user: user.username || user.display_name || user.email || user.id || '',
+    ...(userLabel ? { user: userLabel } : {}),
     systemName: status.system_name || '',
     data: result.body?.data,
   };

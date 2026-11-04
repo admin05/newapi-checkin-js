@@ -47,6 +47,7 @@ try {
 
   assert.equal(result.ok, true);
   assert.equal(result.message, 'checkin succeeded');
+  assert.equal('user' in result, false);
   assert.match(submittedRequest.url, /\/api\/qq-rewards\/self$/);
   assert.equal(submittedRequest.options.headers.authorization, 'Bearer test-access-token');
   assert.deepEqual(JSON.parse(submittedRequest.options.body).date, '2026-11-04');
