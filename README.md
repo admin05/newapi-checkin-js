@@ -95,16 +95,33 @@ Use the website login token from `localStorage.auth_token` or the value after
   "name": "MiniToken",
   "url": "https://minitoken.cc",
   "siteType": "tokenflux-checkin",
-  "accessToken": "paste_login_auth_token_here"
+  "accessToken": "paste_login_auth_token_here",
+  "refreshToken": "paste_localStorage_refresh_token_here",
+  "tokenExpiresAt": 0
 }
 ```
 
 The hostname is detected automatically; set `siteType` explicitly when another
 site uses the same plugin. Browser-copied curl requests are supported too.
-The model API key is not a login token. Login tokens expire; this adapter reports
-HTTP 401 with instructions to update the token. It does not automatically renew
-tokens, so a single pasted access token cannot guarantee long-term unattended
-check-in. `npm run check` queries the authenticated status without submitting.
+The model API key is not a login token. `refreshToken` is the value from
+`localStorage.refresh_token`; `tokenExpiresAt` is the optional value from
+`localStorage.token_expires_at` in milliseconds. Before expiry, or after a 401,
+the script calls `POST /api/v1/auth/refresh`, then saves the rotated access and
+refresh tokens to `.newapi-tokenflux-tokens.json`. This state file is ignored by
+Git and should live on persistent Arcadia storage. Set
+`NEWAPI_TOKENFLUX_STATE_FILE` when the project directory is not persistent.
+The state file is written atomically and locked to prevent concurrent refreshes.
+Keep this file between scheduled runs: the original refresh token in the account
+configuration becomes obsolete after rotation. If the state file is lost, sign
+in again and replace the configured credentials. A custom state file's parent
+directory must already exist, for example:
+
+```sh
+NEWAPI_TOKENFLUX_STATE_FILE='/persistent/newapi/.newapi-tokenflux-tokens.json' npm run checkin
+```
+
+If the refresh token is rejected, Bark reports the failure and you must sign in
+again. `npm run check` queries the authenticated status without submitting.
 Arcadia and Bark use the same settings as the other accounts.
 
 The script also accepts field names used by similar NewAPI check-in projects:

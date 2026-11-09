@@ -1,3 +1,6 @@
 accounts.json
 bookmark-checkin-report.html
 .DS_Store
+.newapi-tokenflux-tokens.json
+.newapi-tokenflux-tokens.json.lock
+.newapi-tokenflux-tokens.json.*.tmp

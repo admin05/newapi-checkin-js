@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { parseCurlAccounts, runAccount } from './checkin.js';
 
 const urlCurl = String.raw`curl --url 'https://chybenzun.top/api/status' \n  -H 'accept: application/json, text/plain, */*' \n  -H 'authorization: Bearer access-token-123' \n  -H 'x-auth-session: sid-123' \n  -H 'new-api-user: 42' \n  -H 'referer: https://chybenzun.top/console/personal' \n  -b 'session=session-token-123; cf_clearance=clearance-token-123'`;
@@ -249,6 +252,117 @@ await withTokenFluxFetch(
     assert.equal(requests.length, 0);
   },
 );
+
+const refreshStateDir = mkdtempSync(join(tmpdir(), 'newapi-tokenflux-test-'));
+const refreshStatePath = join(refreshStateDir, 'tokens.json');
+const previousStatePath = process.env.NEWAPI_TOKENFLUX_STATE_FILE;
+process.env.NEWAPI_TOKENFLUX_STATE_FILE = refreshStatePath;
+try {
+  const refreshRequests = [];
+  const savedFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    refreshRequests.push({ url: String(url), options });
+    if (String(url).endsWith('/api/v1/auth/refresh')) {
+      assert.equal(options.headers.authorization, undefined);
+      assert.deepEqual(JSON.parse(options.body), { refresh_token: 'rt-old' });
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { access_token: 'access-new', refresh_token: 'rt-new', expires_in: 3600 },
+      }), { status: 200 });
+    }
+    assert.equal(options.headers.authorization, 'Bearer access-new');
+    return new Response(JSON.stringify({ checked_in: true, notice: '', reward: '0.1' }), { status: 200 });
+  };
+  try {
+    const account = {
+      ...miniTokenAccount,
+      accessToken: 'access-expired',
+      refreshToken: 'rt-old',
+      tokenExpiresAt: 1,
+    };
+    const first = await runAccount(account);
+    assert.equal(first.message, 'already checked in today');
+    assert.equal(refreshRequests.length, 2);
+    const state = JSON.parse(readFileSync(refreshStatePath, 'utf8'));
+    const savedEntry = Object.values(state.accounts)[0];
+    assert.equal(savedEntry.accessToken, 'access-new');
+    assert.equal(savedEntry.refreshToken, 'rt-new');
+    assert.ok(savedEntry.tokenExpiresAt > Date.now());
+    assert.equal(statSync(refreshStatePath).mode & 0o777, 0o600);
+    assert.equal(existsSync(`${refreshStatePath}.lock`), false);
+
+    refreshRequests.length = 0;
+    const second = await runAccount({ ...account, tokenExpiresAt: 0 });
+    assert.equal(second.message, 'already checked in today');
+    assert.equal(refreshRequests.length, 1);
+    assert.equal(refreshRequests[0].options.headers.authorization, 'Bearer access-new');
+  } finally {
+    globalThis.fetch = savedFetch;
+  }
+
+  // Both status and check-in can reject a token before its recorded expiry.
+  for (const rejectedAction of ['status', 'checkin']) {
+    let refreshed = false;
+    await withTokenFluxFetch((url, options) => {
+      if (url.endsWith('/api/v1/auth/refresh')) {
+        refreshed = true;
+        return { body: { code: 0, data: {
+          access_token: 'access-after-401', refresh_token: 'rt-after-401', expires_in: 3600,
+        } } };
+      }
+      assert.equal(options.headers.authorization, refreshed ? 'Bearer access-after-401' : 'Bearer access-before-401');
+      if (url.endsWith(`/${rejectedAction}`) && !refreshed) return { status: 401, body: {} };
+      if (url.endsWith('/status')) return { body: { checked_in: false } };
+      // Even a failed check-in must leave the newly rotated credentials saved.
+      return { status: 500, body: { message: 'check-in unavailable' } };
+    }, async (requests) => {
+      const result = await runAccount({
+        ...miniTokenAccount, accessToken: 'access-before-401',
+        refreshToken: `rt-before-401-${rejectedAction}`, tokenExpiresAt: Date.now() + 3_600_000,
+      });
+      assert.equal(result.ok, false);
+      assert.match(result.message, /HTTP 500/);
+      assert.equal(requests.filter(({ url }) => url.endsWith('/api/v1/auth/refresh')).length, 1);
+      const state = JSON.parse(readFileSync(refreshStatePath, 'utf8'));
+      assert.ok(Object.values(state.accounts).some((entry) => entry.refreshToken === 'rt-after-401'));
+      assert.equal(existsSync(`${refreshStatePath}.lock`), false);
+    });
+  }
+
+  for (const scenario of ['rejected', 'invalid', 'network']) {
+    const before = readFileSync(refreshStatePath, 'utf8');
+    await withTokenFluxFetch(() => {
+      if (scenario === 'network') throw new Error('fetch failed');
+      return scenario === 'rejected'
+        ? { status: 401, body: { code: 1 } }
+        : { body: { code: 0, data: { access_token: 'partial-response' } } };
+    }, async (requests) => {
+      await assert.rejects(runAccount({
+        ...miniTokenAccount, refreshToken: `rt-failure-${scenario}`, tokenExpiresAt: 1,
+      }), scenario === 'network' ? /not retried/ : /token refresh failed/);
+      assert.equal(requests.length, 1);
+      assert.equal(readFileSync(refreshStatePath, 'utf8'), before);
+      assert.equal(existsSync(`${refreshStatePath}.lock`), false);
+    });
+  }
+
+  writeFileSync(`${refreshStatePath}.lock`, '', { mode: 0o600 });
+  try {
+    await withTokenFluxFetch(() => { throw new Error('must not refresh while locked'); }, async (requests) => {
+      await assert.rejects(runAccount({ ...miniTokenAccount, refreshToken: 'rt-locked', tokenExpiresAt: 1 }), /locked by another run/);
+      assert.equal(requests.length, 0);
+      assert.equal(existsSync(`${refreshStatePath}.lock`), true);
+    });
+  } finally {
+    rmSync(`${refreshStatePath}.lock`);
+  }
+} finally {
+  if (previousStatePath === undefined) delete process.env.NEWAPI_TOKENFLUX_STATE_FILE;
+  else process.env.NEWAPI_TOKENFLUX_STATE_FILE = previousStatePath;
+  rmSync(refreshStateDir, { recursive: true, force: true });
+}
+
+assert.equal(existsSync(refreshStatePath), false);
 
 const dryRunTest = spawnSync(process.execPath, ['--input-type=module', '-', '--dry-run'], {
   encoding: 'utf8',

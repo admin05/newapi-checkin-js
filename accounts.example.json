@@ -91,6 +91,8 @@
     "url": "https://minitoken.cc",
     "siteType": "tokenflux-checkin",
     "accessToken": "paste_login_auth_token_here",
+    "refreshToken": "paste_localStorage_refresh_token_here",
+    "tokenExpiresAt": 0,
     "referer": "https://minitoken.cc/ext/tokenflux.checkin",
     "origin": "https://minitoken.cc"
   },
