@@ -28,6 +28,8 @@ const missingAuthPattern = /not\s+logged\s+in|no\s+access\s+token|unauthorized|a
 const nonLoginCookieNames = new Set(['cf_clearance', '__cf_bm', '_cfuvid']);
 const sub2ApiHosts = new Set(['sub.100xlabs.space']);
 const xkRelayHosts = new Set(['xkrelay.com', 'www.xkrelay.com']);
+const tokenFluxHosts = new Set(['minitoken.cc', 'www.minitoken.cc']);
+const tokenFluxApiPath = '/api/v1/plugins/tokenflux.checkin/api';
 
 function normalizeBaseUrl(url) {
   return new URL(url).origin;
@@ -475,6 +477,7 @@ function getSiteType(account) {
     const host = new URL(normalizeBaseUrl(account.url)).hostname.toLowerCase();
     if (sub2ApiHosts.has(host)) return 'sub2api';
     if (xkRelayHosts.has(host)) return 'xkrelay-qq';
+    if (tokenFluxHosts.has(host)) return 'tokenflux-checkin';
   } catch {
     // Fall through to the default NewAPI behavior.
   }
@@ -488,6 +491,69 @@ function isSub2ApiAccount(account) {
 
 function isXkRelayAccount(account) {
   return getSiteType(account) === 'xkrelay-qq';
+}
+
+async function runTokenFluxAccount(account) {
+  const baseUrl = normalizeBaseUrl(account.url);
+  const headers = buildHeaders({
+    ...account,
+    referer: account.referer || `${baseUrl}/ext/tokenflux.checkin`,
+  });
+  if (!headers.authorization) {
+    throw new Error('missing login credential: set accessToken from MiniToken localStorage.auth_token or copy a logged-in browser request as curl');
+  }
+
+  function requestError(response, body, action) {
+    if (response.status === 401) {
+      return `${action} failed: MiniToken login token expired or was rejected; refresh accessToken from localStorage.auth_token or a logged-in browser request (the model API key is not a login token)`;
+    }
+    return `${action} failed: HTTP ${response.status} ${body?.message || body?.reason || body?.code || compactBodyForError(body)}`.trim();
+  }
+
+  const statusEndpoint = `${tokenFluxApiPath}/status`;
+  const status = await fetchJson(`${baseUrl}${statusEndpoint}`, { headers });
+  if (!status.response.ok) {
+    throw new Error(requestError(status.response, status.body, 'TokenFlux check-in status'));
+  }
+  if (typeof status.body?.checked_in !== 'boolean') {
+    throw new Error('TokenFlux check-in status failed: unexpected response; expected a checked_in boolean');
+  }
+
+  const result = {
+    name: account.name || baseUrl,
+    ok: true,
+    systemName: 'MiniToken TokenFlux check-in',
+    data: status.body,
+  };
+  if (dryRun) {
+    return { ...result, skipped: true, message: 'checkin is enabled; dry run skipped checkin' };
+  }
+  if (status.body.checked_in) {
+    return { ...result, method: 'GET', message: 'already checked in today' };
+  }
+
+  // The plugin submits no body and returns its own JSON, without a NewAPI envelope.
+  const { response, body } = await fetchJson(`${baseUrl}${tokenFluxApiPath}/checkin`, {
+    method: 'POST',
+    headers,
+  });
+  if (response.ok) {
+    return {
+      ...result,
+      method: 'POST',
+      message: 'checkin succeeded',
+      data: { ...status.body, checked_in: true },
+    };
+  }
+  if (body?.code === 'ALREADY_CHECKED_IN' || body?.reason === 'ALREADY_CHECKED_IN') {
+    return {
+      ...result,
+      method: 'POST',
+      message: 'already checked in today',
+      data: { ...status.body, checked_in: true },
+    };
+  }
+  return { ...result, ok: false, message: requestError(response, body, 'TokenFlux check-in') };
 }
 
 function getBeijingMonth() {
@@ -1036,6 +1102,10 @@ async function checkInWithCaptcha(account, baseUrl) {
 }
 
 export async function runAccount(account) {
+  if (getSiteType(account) === 'tokenflux-checkin') {
+    return runTokenFluxAccount(account);
+  }
+
   const name = account.name || normalizeBaseUrl(account.url);
 
   if (isSub2ApiAccount(account) && !hasLoginCredential(account)) {

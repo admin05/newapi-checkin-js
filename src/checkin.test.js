@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { parseCurlAccounts, runAccount } from './checkin.js';
 
 const urlCurl = String.raw`curl --url 'https://chybenzun.top/api/status' \n  -H 'accept: application/json, text/plain, */*' \n  -H 'authorization: Bearer access-token-123' \n  -H 'x-auth-session: sid-123' \n  -H 'new-api-user: 42' \n  -H 'referer: https://chybenzun.top/console/personal' \n  -b 'session=session-token-123; cf_clearance=clearance-token-123'`;
@@ -139,4 +140,134 @@ try {
   globalThis.fetch = rejectedRefreshFetch;
 }
 
-console.log('checkin parser tests passed');
+const miniTokenAccount = {
+  name: 'MiniToken',
+  url: 'https://minitoken.cc',
+  accessToken: 'test-login-token',
+};
+const tokenFluxApi = '/api/v1/plugins/tokenflux.checkin/api';
+
+async function withTokenFluxFetch(handler, verify) {
+  const savedFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options = {}) => {
+    requests.push({ url: String(url), options });
+    const { status = 200, body } = handler(String(url), options);
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  try {
+    await verify(requests);
+  } finally {
+    globalThis.fetch = savedFetch;
+  }
+}
+
+await withTokenFluxFetch(
+  () => ({ body: { checked_in: true, notice: '', reward: '0.1' } }),
+  async (requests) => {
+    const [account] = parseCurlAccounts(`curl 'https://minitoken.cc${tokenFluxApi}/status' -H 'authorization: Bearer test-login-token'`);
+    const result = await runAccount(account);
+    assert.equal(result.ok, true);
+    assert.equal(result.message, 'already checked in today');
+    assert.equal(result.data.reward, '0.1');
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, `https://minitoken.cc${tokenFluxApi}/status`);
+    assert.equal(requests[0].options.headers.authorization, 'Bearer test-login-token');
+    assert.equal(requests[0].options.headers.referer, 'https://minitoken.cc/ext/tokenflux.checkin');
+  },
+);
+
+await withTokenFluxFetch(
+  (url, options) => ({ body: options.method === 'POST'
+    ? { reward: '0.1' }
+    : { checked_in: false, reward: '0.1' } }),
+  async (requests) => {
+    const result = await runAccount({ ...miniTokenAccount, url: 'https://plugin.example', siteType: 'tokenflux-checkin' });
+    assert.equal(result.ok, true);
+    assert.equal(result.message, 'checkin succeeded');
+    assert.equal(result.data.checked_in, true);
+    assert.equal(requests.length, 2);
+    assert.equal(requests[1].url, `https://plugin.example${tokenFluxApi}/checkin`);
+    assert.equal(requests[1].options.method, 'POST');
+    assert.equal(requests[1].options.body, undefined);
+  },
+);
+
+for (const field of ['code', 'reason']) {
+  await withTokenFluxFetch(
+    (url, options) => options.method === 'POST'
+      ? { status: 409, body: { [field]: 'ALREADY_CHECKED_IN' } }
+      : { body: { checked_in: false, reward: '0.1' } },
+    async () => {
+      const result = await runAccount(miniTokenAccount);
+      assert.equal(result.ok, true);
+      assert.equal(result.message, 'already checked in today');
+    },
+  );
+}
+
+for (const body of [{}, { code: 0, data: { checked_in: true } }, { checked_in: 'false' }]) {
+  await withTokenFluxFetch(
+    () => ({ body }),
+    async (requests) => {
+      await assert.rejects(runAccount(miniTokenAccount), /expected a checked_in boolean/);
+      assert.equal(requests.length, 1);
+    },
+  );
+}
+
+await withTokenFluxFetch(
+  () => ({ status: 401, body: { code: 'UNAUTHORIZED', message: '请先登录。' } }),
+  async (requests) => {
+    await assert.rejects(runAccount(miniTokenAccount), /login token expired or was rejected/);
+    assert.equal(requests.length, 1); // Do not call the NewAPI refresh endpoint.
+  },
+);
+
+for (const status of [401, 403, 500]) {
+  await withTokenFluxFetch(
+    (url, options) => options.method === 'POST'
+      ? { status, body: { message: 'request rejected' } }
+      : { body: { checked_in: false, reward: '0.1' } },
+    async (requests) => {
+      const result = await runAccount(miniTokenAccount);
+      assert.equal(result.ok, false);
+      assert.match(result.message, status === 401 ? /login token expired/ : new RegExp(`HTTP ${status}`));
+      assert.equal(requests.length, 2);
+    },
+  );
+}
+
+await withTokenFluxFetch(
+  () => { throw new Error('must not request without login token'); },
+  async (requests) => {
+    await assert.rejects(runAccount({ url: miniTokenAccount.url }), /missing login credential/);
+    await assert.rejects(runAccount({ url: miniTokenAccount.url, session: 'session=cookie-only' }), /missing login credential/);
+    assert.equal(requests.length, 0);
+  },
+);
+
+const dryRunTest = spawnSync(process.execPath, ['--input-type=module', '-', '--dry-run'], {
+  encoding: 'utf8',
+  input: `
+    import assert from 'node:assert/strict';
+    import { runAccount } from ${JSON.stringify(new URL('./checkin.js', import.meta.url).href)};
+    let calls = 0;
+    globalThis.fetch = async (url, options) => {
+      calls += 1;
+      assert.ok(url.endsWith('${tokenFluxApi}/status'));
+      assert.notEqual(options.method, 'POST');
+      return new Response(JSON.stringify({ checked_in: false, reward: '0.1' }));
+    };
+    const result = await runAccount(${JSON.stringify(miniTokenAccount)});
+    assert.equal(result.ok, true);
+    assert.equal(result.skipped, true);
+    assert.equal(calls, 1);
+  `,
+});
+assert.equal(dryRunTest.status, 0, dryRunTest.stderr || dryRunTest.error?.message);
+
+console.log('checkin tests passed');

@@ -87,6 +87,14 @@
     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
   },
   {
+    "name": "MiniToken",
+    "url": "https://minitoken.cc",
+    "siteType": "tokenflux-checkin",
+    "accessToken": "paste_login_auth_token_here",
+    "referer": "https://minitoken.cc/ext/tokenflux.checkin",
+    "origin": "https://minitoken.cc"
+  },
+  {
     "name": "100XLabs",
     "url": "https://sub.100xlabs.space",
     "siteType": "sub2api",

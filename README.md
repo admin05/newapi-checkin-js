@@ -13,6 +13,7 @@ Node.js script for NewAPI-style daily check-in. It currently targets:
 - `https://www.wintoken.dev`
 - `https://sub.100xlabs.space` (Sub2API)
 - `https://xkrelay.com` (QQ check-in rewards)
+- `https://minitoken.cc` (TokenFlux check-in plugin)
 
 The script first reads `/api/status`. It only calls `/api/user/checkin` when
 `checkin_enabled` is `true`. For compatible sites that use a reward pack
@@ -79,6 +80,32 @@ Beijing-month status and submits the returned date with a generated request ID:
 The access token is short-lived. The script renews it through
 `/api/user/auth/refresh` using the browser Cookie and derives the
 `X-Auth-Session` value from the session ID prefix in `new_api_refresh`.
+
+`https://minitoken.cc/ext/tokenflux.checkin` uses the TokenFlux plugin, with
+`GET /api/v1/plugins/tokenflux.checkin/api/status` and
+`POST /api/v1/plugins/tokenflux.checkin/api/checkin` (no request body).
+The script reads the status first and avoids submitting again when `checked_in`
+is true. It also treats an `ALREADY_CHECKED_IN` response as success.
+
+Use the website login token from `localStorage.auth_token` or the value after
+`Bearer ` in a logged-in browser request's `Authorization` header:
+
+```json
+{
+  "name": "MiniToken",
+  "url": "https://minitoken.cc",
+  "siteType": "tokenflux-checkin",
+  "accessToken": "paste_login_auth_token_here"
+}
+```
+
+The hostname is detected automatically; set `siteType` explicitly when another
+site uses the same plugin. Browser-copied curl requests are supported too.
+The model API key is not a login token. Login tokens expire; this adapter reports
+HTTP 401 with instructions to update the token. It does not automatically renew
+tokens, so a single pasted access token cannot guarantee long-term unattended
+check-in. `npm run check` queries the authenticated status without submitting.
+Arcadia and Bark use the same settings as the other accounts.
 
 The script also accepts field names used by similar NewAPI check-in projects:
 
