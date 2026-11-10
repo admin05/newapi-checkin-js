@@ -80,6 +80,40 @@ Beijing-month status and submits the returned date with a generated request ID:
 The access token is short-lived. The script renews it through
 `/api/user/auth/refresh` using the browser Cookie and derives the
 `X-Auth-Session` value from the session ID prefix in `new_api_refresh`.
+Rotated Cookies from `Set-Cookie`, the access token, and the session ID are saved
+atomically in `.newapi-xkrelay-sessions.json` (private permissions, ignored by Git).
+Subsequent runs prefer these saved credentials over the original configured
+Cookie. Cookie paths, expiry, deletion, and Secure attributes are respected.
+Changing the configured refresh Cookie starts using the newly supplied login.
+
+For Arcadia, keep this file on persistent writable storage. The project directory
+is the default; if Git synchronization recreates it, set an absolute container
+path instead (create the parent directory first):
+
+```sh
+NEWAPI_XKRELAY_STATE_FILE='/persistent/newapi/.newapi-xkrelay-sessions.json' npm run checkin
+```
+
+All overlapping jobs must use the same state file. A file lock covers loading,
+refreshing, saving, and check-in; another run waits up to 30 seconds and reloads
+the saved state after obtaining the lock. A crashed process can leave a `.lock`
+file: remove it only after confirming that no job is still using it.
+
+Refresh requests use one transport, without redirects or automatic replay. The
+default is Node fetch. If your NAS needs curl for connectivity, set
+`NEWAPI_XKRELAY_REFRESH_TRANSPORT=curl` **before the first run with fresh
+credentials**; curl must be installed. Both transports preserve `Set-Cookie`.
+If the refresh response is lost, persistence fails after rotation, or the server
+rejects the session, the next run stops rather than reusing an uncertain refresh
+Cookie. Sign in again and replace the configured Cookie; deleting the state file
+and reusing the old Cookie is not a recovery method. A new Cookie received with a
+successful HTTP response is saved even when its JSON body is malformed.
+
+For an existing `AUTH_SESSION_REVOKED` error, obtain a fresh login after updating
+the script. Prefer a separate login session for Arcadia: the lock cannot
+coordinate refreshes by a browser or another machine using the same session.
+Server-side session expiry or revocation still requires signing in again. Bark
+continues to report the check-in result and any renewal failure through `BARK`.
 
 `https://minitoken.cc/ext/tokenflux.checkin` uses the TokenFlux plugin, with
 `GET /api/v1/plugins/tokenflux.checkin/api/status` and

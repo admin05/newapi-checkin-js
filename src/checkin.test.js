@@ -28,6 +28,12 @@ assert.equal(directAccounts[0].session, 'session=link-session-token');
 assert.equal(directAccounts[0].origin, 'https://link-ai.cc');
 
 const originalFetch = globalThis.fetch;
+const xkStateDir = mkdtempSync(join(tmpdir(), 'newapi-xkrelay-basic-'));
+const oldXkStatePath = process.env.NEWAPI_XKRELAY_STATE_FILE;
+const oldXkTransport = process.env.NEWAPI_XKRELAY_REFRESH_TRANSPORT;
+process.env.NEWAPI_XKRELAY_STATE_FILE = join(xkStateDir, 'sessions.json');
+process.env.NEWAPI_XKRELAY_REFRESH_TRANSPORT = 'fetch';
+try {
 const qqRequests = [];
 globalThis.fetch = async (url, options = {}) => {
   qqRequests.push({ url: String(url), options });
@@ -69,7 +75,10 @@ globalThis.fetch = async (url, options = {}) => {
     return new Response(JSON.stringify({
       success: true,
       data: { access_token: 'refreshed-access-token', session: { sid: 'session-sid-123' } },
-    }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }), { status: 200, headers: {
+      'content-type': 'application/json',
+      'set-cookie': 'new_api_refresh=session-sid-123.rotated-secret; Path=/api/user/auth; Secure; HttpOnly',
+    } });
   }
   if (options.headers?.authorization === 'Bearer expired-access-token') {
     return new Response(JSON.stringify({ success: false, message: 'Unauthorized, invalid access token' }), {
@@ -141,6 +150,13 @@ try {
   );
 } finally {
   globalThis.fetch = rejectedRefreshFetch;
+}
+} finally {
+  if (oldXkStatePath === undefined) delete process.env.NEWAPI_XKRELAY_STATE_FILE;
+  else process.env.NEWAPI_XKRELAY_STATE_FILE = oldXkStatePath;
+  if (oldXkTransport === undefined) delete process.env.NEWAPI_XKRELAY_REFRESH_TRANSPORT;
+  else process.env.NEWAPI_XKRELAY_REFRESH_TRANSPORT = oldXkTransport;
+  rmSync(xkStateDir, { recursive: true, force: true });
 }
 
 const miniTokenAccount = {

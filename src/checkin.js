@@ -1,8 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { runTokenFluxAccount } from './tokenflux.js';
+import { fetchJson } from './http.js';
+import { fetchXkRelayJson, withXkRelayCredentials } from './xkrelay-auth.js';
 import { randomUUID } from 'node:crypto';
 import { env, argv, exit } from 'node:process';
-import { spawn } from 'node:child_process';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -531,41 +532,6 @@ async function getXkRelayQqStatus(account) {
   };
 }
 
-async function fetchJson(url, options = {}, { allowCurlFallback = true } = {}) {
-  try {
-    const response = await fetch(url, {
-      redirect: 'follow',
-      signal: AbortSignal.timeout(20_000),
-      ...options,
-    });
-    const text = await response.text();
-    return parseJsonResponse(response.status, response.headers, text);
-  } catch (error) {
-    if (!allowCurlFallback || !/fetch failed|network|ENOTFOUND|ECONN/i.test(error.message)) {
-      throw error;
-    }
-    return fetchJsonWithCurl(url, options);
-  }
-}
-
-function parseJsonResponse(status, headers, text) {
-  let body;
-  try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = { raw: text };
-  }
-
-  return {
-    response: {
-      status,
-      ok: status >= 200 && status < 300,
-      headers,
-    },
-    body,
-  };
-}
-
 function isAccessTokenRejected(response, body) {
   const message = body?.message || body?.error || body?.raw || '';
   return response.status === 401 && /access\s+token|token.*(?:invalid|expired)|(?:invalid|expired).*token/i.test(String(message));
@@ -606,73 +572,25 @@ async function refreshNewApiAccessToken(account) {
 }
 
 async function fetchAccountJson(account, url, options = {}) {
+  if (isXkRelayAccount(account)) {
+    return fetchXkRelayJson(account, url, options, { fetchJson, buildHeaders });
+  }
   const initial = await fetchJson(url, {
     ...options,
     headers: options.headers || buildHeaders(account),
   });
 
-  const shouldRefreshXkRelay = isXkRelayAccount(account) && initial.response.status === 401;
-  if (!isAccessTokenRejected(initial.response, initial.body) && !shouldRefreshXkRelay) {
+  if (!isAccessTokenRejected(initial.response, initial.body)) {
     return initial;
   }
 
   if (!(await refreshNewApiAccessToken(account))) {
-    if (isXkRelayAccount(account)) {
-      throw new Error(`xkrelay access-token refresh failed: ${account.authRefreshError || 'refresh endpoint rejected the browser Cookie'}`);
-    }
     return initial;
   }
 
   return fetchJson(url, {
     ...options,
     headers: buildHeaders(account),
-  });
-}
-
-function fetchJsonWithCurl(url, options = {}) {
-  return new Promise((resolve, reject) => {
-    const method = options.method || 'GET';
-    const args = ['-sS', '-L', '--max-time', '20', '-X', method];
-
-    for (const [key, value] of Object.entries(options.headers || {})) {
-      if (value !== undefined && value !== '') {
-        args.push('-H', `${key}: ${value}`);
-      }
-    }
-
-    if (options.body !== undefined) {
-      args.push('--data-raw', options.body);
-    }
-
-    args.push('-w', '\n%{http_code}', url);
-
-    const child = spawn('curl', args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk;
-    });
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk;
-    });
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(stderr.trim() || `curl exited with code ${code}`));
-        return;
-      }
-
-      const match = stdout.match(/\n(\d{3})$/);
-      if (!match) {
-        reject(new Error('curl response did not include HTTP status'));
-        return;
-      }
-
-      const status = Number(match[1]);
-      const text = stdout.slice(0, match.index);
-      resolve(parseJsonResponse(status, new Map(), text));
-    });
   });
 }
 
@@ -1042,7 +960,11 @@ export async function runAccount(account) {
   if (getSiteType(account) === 'tokenflux-checkin') {
     return runTokenFluxAccount(account, { fetchJson, buildHeaders, dryRun });
   }
+  if (isXkRelayAccount(account)) return withXkRelayCredentials(account, runStandardAccount);
+  return runStandardAccount(account);
+}
 
+async function runStandardAccount(account) {
   const name = account.name || normalizeBaseUrl(account.url);
 
   if (isSub2ApiAccount(account) && !hasLoginCredential(account)) {

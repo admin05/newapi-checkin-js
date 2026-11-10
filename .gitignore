@@ -4,3 +4,6 @@ bookmark-checkin-report.html
 .newapi-tokenflux-tokens.json
 .newapi-tokenflux-tokens.json.lock
 .newapi-tokenflux-tokens.json.*.tmp
+.newapi-xkrelay-sessions.json
+.newapi-xkrelay-sessions.json.lock
+.newapi-xkrelay-sessions.json.*.tmp
